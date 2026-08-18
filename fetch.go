@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -25,6 +26,7 @@ const (
 	maxHTMLBytes     = 16 << 20
 	maxImageBytes    = 32 << 20
 	maxImagePixels   = 40_000_000
+	maxGIFFrames     = 1_000
 	defaultUserAgent = "horizont-epub/1.0"
 )
 
@@ -250,9 +252,96 @@ func validateRasterImage(body []byte, kind imageKind) error {
 	case "image/png":
 		_, err = png.Decode(reader)
 	case "image/gif":
+		if err = validateGIFFrames(body); err != nil {
+			return err
+		}
 		_, err = gif.DecodeAll(reader)
 	}
 	return err
+}
+
+func validateGIFFrames(body []byte) error {
+	if len(body) < 13 {
+		return io.ErrUnexpectedEOF
+	}
+	offset := 13
+	if body[10]&0x80 != 0 {
+		offset += 3 << ((body[10] & 0x07) + 1)
+	}
+	frames := 0
+	var pixels int64
+	for offset < len(body) {
+		block := body[offset]
+		offset++
+		switch block {
+		case 0x21: // Extension.
+			if offset >= len(body) {
+				return io.ErrUnexpectedEOF
+			}
+			offset++ // Extension label.
+			var err error
+			offset, err = skipGIFSubBlocks(body, offset)
+			if err != nil {
+				return err
+			}
+		case 0x2c: // Image descriptor.
+			if len(body)-offset < 9 {
+				return io.ErrUnexpectedEOF
+			}
+			width := int64(binary.LittleEndian.Uint16(body[offset+4 : offset+6]))
+			height := int64(binary.LittleEndian.Uint16(body[offset+6 : offset+8]))
+			if width == 0 || height == 0 {
+				return fmt.Errorf("GIF frame has invalid dimensions %dx%d", width, height)
+			}
+			frames++
+			if frames > maxGIFFrames {
+				return fmt.Errorf("GIF exceeds %d-frame limit", maxGIFFrames)
+			}
+			pixels += width * height
+			if pixels > maxImagePixels {
+				return fmt.Errorf("GIF frames exceed %d-pixel limit", maxImagePixels)
+			}
+			packed := body[offset+8]
+			offset += 9
+			if packed&0x80 != 0 {
+				offset += 3 << ((packed & 0x07) + 1)
+			}
+			if offset >= len(body) {
+				return io.ErrUnexpectedEOF
+			}
+			offset++ // LZW minimum code size.
+			var err error
+			offset, err = skipGIFSubBlocks(body, offset)
+			if err != nil {
+				return err
+			}
+		case 0x3b: // Trailer.
+			if frames == 0 {
+				return fmt.Errorf("GIF contains no frames")
+			}
+			return nil
+		default:
+			return fmt.Errorf("GIF contains unknown block type 0x%02x", block)
+		}
+	}
+	return io.ErrUnexpectedEOF
+}
+
+func skipGIFSubBlocks(body []byte, offset int) (int, error) {
+	for {
+		if offset >= len(body) {
+			return 0, io.ErrUnexpectedEOF
+		}
+		size := int(body[offset])
+		offset++
+		if size == 0 {
+			return offset, nil
+		}
+		if len(body)-offset < size {
+			return 0, io.ErrUnexpectedEOF
+		}
+		offset += size
+	}
 }
 
 func validateRasterDimensions(config image.Config) error {

@@ -259,23 +259,23 @@ func removeReturnLink(content *goquery.Selection, articleBase *url.URL) {
 
 	content.Find("a").Each(func(_ int, selection *goquery.Selection) {
 		n := firstNode(selection)
-		text := strings.ToLower(visibleText(n))
-		shouldRemove := strings.Contains(text, "вернуться к содержанию")
-		if !shouldRemove {
-			if candidate, err := resolveHTTPURL(attr(n, "href"), articleBase); err == nil {
-				shouldRemove = candidate.Scheme == parentIssue.Scheme && candidate.Host == parentIssue.Host && candidate.EscapedPath() == parentIssue.EscapedPath()
-			}
-		}
-		if !shouldRemove {
-			return
-		}
+		linkIsReturn := strings.Contains(strings.ToLower(visibleText(n)), "вернуться к содержанию")
 		for parent := n.Parent; parent != nil; parent = parent.Parent {
 			if parent.Data == "p" {
-				detachNode(parent)
+				paragraphIsReturn := strings.HasPrefix(strings.ToLower(visibleText(parent)), "вернуться к содержанию")
+				candidate, err := resolveHTTPURL(attr(n, "href"), articleBase)
+				linksToIssue := err == nil && candidate.Scheme == parentIssue.Scheme && candidate.Host == parentIssue.Host && candidate.EscapedPath() == parentIssue.EscapedPath()
+				if paragraphIsReturn && (linkIsReturn || linksToIssue) {
+					detachNode(parent)
+				} else if linkIsReturn {
+					detachNode(n)
+				}
 				return
 			}
 		}
-		detachNode(n)
+		if linkIsReturn {
+			detachNode(n)
+		}
 	})
 }
 

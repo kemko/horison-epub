@@ -130,6 +130,23 @@ func TestParseArticleKeepsAllowedHTMLAndNormalizesURLs(t *testing.T) {
 	}
 }
 
+func TestParseArticleOnlyRemovesReturnBoilerplate(t *testing.T) {
+	html := `<h1 class="entry-title">Тест</h1><div class="entry-content">
+<p>Сравните с <a href="../">выпуском целиком</a>, чтобы увидеть контекст.</p>
+<p><strong>Вернуться к содержанию номера:</strong> <a href="../">Выпуск</a></p>
+</div>`
+	article, err := ParseArticle(strings.NewReader(html), "https://example.test/issues/item/article/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(article.HTML, `href="https://example.test/issues/item/"`) || !strings.Contains(article.HTML, "увидеть контекст") {
+		t.Fatalf("ordinary parent-issue link was removed: %s", article.HTML)
+	}
+	if strings.Contains(strings.ToLower(article.HTML), "вернуться к содержанию") {
+		t.Fatalf("return boilerplate was retained: %s", article.HTML)
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	tests := []struct {
 		name string

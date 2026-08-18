@@ -1,12 +1,12 @@
 module horizont-epub
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.2
 	github.com/go-shiori/go-epub v1.2.1
 	github.com/microcosm-cc/bluemonday v1.0.27
-	golang.org/x/net v0.35.0
+	golang.org/x/net v0.56.0
 )
 
 require (

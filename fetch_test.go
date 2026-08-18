@@ -305,6 +305,18 @@ func TestRasterImagePixelLimit(t *testing.T) {
 	}
 }
 
+func TestGIFFrameLimits(t *testing.T) {
+	if _, err := detectImageKind(animatedGIFBytes(2)); err != nil {
+		t.Fatalf("valid animated GIF: %v", err)
+	}
+	if err := validateGIFFrames(testGIFStructure(maxGIFFrames+1, 1, 1)); err == nil || !strings.Contains(err.Error(), "frame limit") {
+		t.Fatalf("frame limit error = %v", err)
+	}
+	if err := validateGIFFrames(testGIFStructure(2, 5_000, 5_000)); err == nil || !strings.Contains(err.Error(), "pixel limit") {
+		t.Fatalf("pixel limit error = %v", err)
+	}
+}
+
 func TestFetchImageRejectsUnsafeSVG(t *testing.T) {
 	tests := []struct {
 		name string
@@ -357,6 +369,34 @@ func gifBytes() []byte {
 		panic(err)
 	}
 	return buffer.Bytes()
+}
+
+func animatedGIFBytes(frames int) []byte {
+	palette := color.Palette{color.Black, color.White}
+	images := make([]*image.Paletted, frames)
+	for index := range images {
+		images[index] = image.NewPaletted(image.Rect(0, 0, 1, 1), palette)
+	}
+	var buffer bytes.Buffer
+	if err := gif.EncodeAll(&buffer, &gif.GIF{Image: images, Delay: make([]int, frames)}); err != nil {
+		panic(err)
+	}
+	return buffer.Bytes()
+}
+
+func testGIFStructure(frames, width, height int) []byte {
+	body := []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00")
+	for range frames {
+		body = append(body,
+			0x2c,
+			0x00, 0x00, 0x00, 0x00,
+			byte(width), byte(width>>8), byte(height), byte(height>>8),
+			0x00,
+			0x02,
+			0x00,
+		)
+	}
+	return append(body, 0x3b)
 }
 
 func testImage() image.Image {
