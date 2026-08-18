@@ -243,6 +243,36 @@ func TestBuildEPUBRequiresEveryIssueMaterial(t *testing.T) {
 	}
 }
 
+func TestBuildEPUBRejectsMissingDependenciesAndMetadata(t *testing.T) {
+	validIssue := Issue{
+		Title:    "Выпуск",
+		URL:      "https://example.test/issues/one/",
+		CoverURL: "https://example.test/cover.png",
+	}
+	fetcher := newTestFetcher(t)
+	tests := []struct {
+		name    string
+		issue   Issue
+		fetcher *Fetcher
+		output  io.Writer
+		want    string
+	}{
+		{name: "fetcher", issue: validIssue, output: io.Discard, want: "missing fetcher"},
+		{name: "output", issue: validIssue, fetcher: fetcher, want: "missing output"},
+		{name: "title", issue: Issue{URL: validIssue.URL, CoverURL: validIssue.CoverURL}, fetcher: fetcher, output: io.Discard, want: "incomplete issue metadata"},
+		{name: "URL", issue: Issue{Title: validIssue.Title, CoverURL: validIssue.CoverURL}, fetcher: fetcher, output: io.Discard, want: "incomplete issue metadata"},
+		{name: "cover", issue: Issue{Title: validIssue.Title, URL: validIssue.URL}, fetcher: fetcher, output: io.Discard, want: "incomplete issue metadata"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := BuildEPUB(test.issue, nil, test.fetcher, test.output)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
 type zipEntry struct {
 	body   []byte
 	method uint16

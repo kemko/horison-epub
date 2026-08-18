@@ -37,6 +37,44 @@ func TestOutputPathFor(t *testing.T) {
 	}
 }
 
+func TestUniqueArticleURLsDeduplicatesAndLimitsMaterials(t *testing.T) {
+	issue := Issue{Sections: []Section{
+		{Articles: []Article{
+			{Title: "One", URL: "https://example.test/issues/one/"},
+			{Title: "One again", URL: "https://example.test/issues/one/#fragment"},
+		}},
+		{Articles: []Article{{Title: "Two", URL: "https://example.test/issues/two/"}}},
+	}}
+	urls, err := uniqueArticleURLs(issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(urls) != 2 || urls[0] != issue.Sections[0].Articles[0].URL || urls[1] != issue.Sections[1].Articles[0].URL {
+		t.Fatalf("unique URLs = %q", urls)
+	}
+
+	articles := make([]Article, maxArticlesPerIssue+1)
+	for index := range articles {
+		articles[index] = Article{Title: fmt.Sprint(index), URL: fmt.Sprintf("https://example.test/issues/%d/", index)}
+	}
+	_, err = uniqueArticleURLs(Issue{Sections: []Section{{Articles: articles}}})
+	if err == nil || !strings.Contains(err.Error(), "article limit") {
+		t.Fatalf("article limit error = %v", err)
+	}
+}
+
+func TestDirectoryModeUnsafeIsPlatformSpecific(t *testing.T) {
+	if directoryModeUnsafe("windows", 0o777) {
+		t.Fatal("Windows synthetic mode bits were treated as POSIX permissions")
+	}
+	if directoryModeUnsafe("linux", 0o755) {
+		t.Fatal("private POSIX directory was rejected")
+	}
+	if !directoryModeUnsafe("linux", 0o775) {
+		t.Fatal("group-writable POSIX directory was accepted")
+	}
+}
+
 func TestRunValidatesArgumentsAndExistingOutput(t *testing.T) {
 	for _, args := range [][]string{{}, {"one", "two"}, {"-o"}} {
 		if err := run(args, io.Discard, io.Discard); err == nil {
@@ -205,7 +243,7 @@ func TestRunBuildsEPUBAndPrintsOutput(t *testing.T) {
 
 	output := filepath.Join(t.TempDir(), "book.epub")
 	var stdout, stderr bytes.Buffer
-	if err := run([]string{"-o", output, server.URL + "/issues/demo/"}, &stdout, &stderr); err != nil {
+	if err := run([]string{"-allow-private-network", "-o", output, server.URL + "/issues/demo/"}, &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.TrimSpace(stdout.String()); got != output {
@@ -240,7 +278,7 @@ func TestRunRemovesTemporaryOutputWhenImageFails(t *testing.T) {
 
 	directory := t.TempDir()
 	output := filepath.Join(directory, "failed.epub")
-	err := run([]string{"-o", output, server.URL + "/issues/demo/"}, io.Discard, io.Discard)
+	err := run([]string{"-allow-private-network", "-o", output, server.URL + "/issues/demo/"}, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "/missing.png") {
 		t.Fatalf("image error = %v", err)
 	}
@@ -270,7 +308,7 @@ func TestRunStopsOnUnavailableArticleWithoutOutput(t *testing.T) {
 	defer server.Close()
 
 	output := filepath.Join(t.TempDir(), "failed.epub")
-	err := run([]string{"-o", output, server.URL + "/issues/demo/"}, io.Discard, io.Discard)
+	err := run([]string{"-allow-private-network", "-o", output, server.URL + "/issues/demo/"}, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "/missing-article/") {
 		t.Fatalf("article error = %v", err)
 	}
@@ -294,7 +332,7 @@ func TestRunStopsOnIssueParseErrorWithoutOutput(t *testing.T) {
 
 	directory := t.TempDir()
 	output := filepath.Join(directory, "failed.epub")
-	err := run([]string{"-o", output, server.URL + "/issues/demo/"}, io.Discard, io.Discard)
+	err := run([]string{"-allow-private-network", "-o", output, server.URL + "/issues/demo/"}, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "missing title") {
 		t.Fatalf("parse error = %v", err)
 	}

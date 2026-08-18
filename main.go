@@ -13,8 +13,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
+
+const maxArticlesPerIssue = 500
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
@@ -27,9 +30,10 @@ func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 	flags := flag.NewFlagSet("horizont-epub", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	output := flags.String("o", "", "output EPUB path")
+	allowPrivateNetwork := flags.Bool("allow-private-network", false, "allow downloads from private network addresses")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			if _, err := fmt.Fprintln(stderr, "usage: horizont-epub [-o output.epub] <issue-url>"); err != nil {
+			if _, err := fmt.Fprintln(stderr, "usage: horizont-epub [-allow-private-network] [-o output.epub] <issue-url>"); err != nil {
 				return fmt.Errorf("write help: %w", err)
 			}
 			return nil
@@ -37,7 +41,7 @@ func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 		return fmt.Errorf("invalid arguments: %w", err)
 	}
 	if flags.NArg() != 1 {
-		return errors.New("usage: horizont-epub [-o output.epub] <issue-url>")
+		return errors.New("usage: horizont-epub [-allow-private-network] [-o output.epub] <issue-url>")
 	}
 
 	issueURL := flags.Arg(0)
@@ -52,7 +56,7 @@ func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 		return err
 	}
 
-	fetcher, err := NewFetcher()
+	fetcher, err := newFetcher(*allowPrivateNetwork)
 	if err != nil {
 		return fmt.Errorf("create fetcher: %w", err)
 	}
@@ -71,25 +75,51 @@ func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 		return fmt.Errorf("parse issue %s: %w", finalIssueURL, err)
 	}
 
-	var articles []Article
-	for _, section := range issue.Sections {
-		for _, summary := range section.Articles {
-			body, finalArticleURL, err := fetcher.FetchHTML(summary.URL)
-			if err != nil {
-				return err
-			}
-			article, err := ParseArticle(bytes.NewReader(body), finalArticleURL)
-			if err != nil {
-				return fmt.Errorf("parse article %s: %w", summary.URL, err)
-			}
-			// Keep the issue URL as the stable lookup key; ParseArticle used the
-			// redirected URL above so relative resources resolve from the final page.
-			article.URL = summary.URL
-			articles = append(articles, article)
+	articleURLs, err := uniqueArticleURLs(issue)
+	if err != nil {
+		return err
+	}
+	articles := make([]Article, 0, len(articleURLs))
+	for _, articleURL := range articleURLs {
+		body, finalArticleURL, err := fetcher.FetchHTML(articleURL)
+		if err != nil {
+			return err
 		}
+		article, err := ParseArticle(bytes.NewReader(body), finalArticleURL)
+		if err != nil {
+			return fmt.Errorf("parse article %s: %w", articleURL, err)
+		}
+		// Keep the issue URL as the stable lookup key; ParseArticle used the
+		// redirected URL above so relative resources resolve from the final page.
+		article.URL = articleURL
+		articles = append(articles, article)
 	}
 
 	return writeEPUB(issue, articles, fetcher, outputPath, stdout)
+}
+
+func uniqueArticleURLs(issue Issue) ([]string, error) {
+	seen := make(map[string]struct{})
+	var urls []string
+	materials := 0
+	for _, section := range issue.Sections {
+		for _, article := range section.Articles {
+			materials++
+			if materials > maxArticlesPerIssue {
+				return nil, fmt.Errorf("issue exceeds %d-article limit", maxArticlesPerIssue)
+			}
+			key, _, err := canonicalURL(article.URL)
+			if err != nil {
+				return nil, fmt.Errorf("article %q: invalid URL: %w", article.Title, err)
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			urls = append(urls, article.URL)
+		}
+	}
+	return urls, nil
 }
 
 func outputPathFor(issueURL, requested string) (string, error) {
@@ -143,7 +173,7 @@ func writeEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath str
 	if err != nil {
 		return fmt.Errorf("stat output directory: %w", err)
 	}
-	if directory.Mode().Perm()&0o022 != 0 {
+	if directoryModeUnsafe(runtime.GOOS, directory.Mode()) {
 		return fmt.Errorf("output directory %q is writable by other users", outputDir)
 	}
 
@@ -186,6 +216,10 @@ func writeEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath str
 		return fmt.Errorf("print output path: %w", err)
 	}
 	return nil
+}
+
+func directoryModeUnsafe(goos string, mode os.FileMode) bool {
+	return goos != "windows" && mode.Perm()&0o022 != 0
 }
 
 func createTemporaryOutput(root *os.Root) (*os.File, string, error) {

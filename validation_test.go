@@ -19,7 +19,7 @@ func TestEndToEndBuildsAutonomousEPUB(t *testing.T) {
 
 	output := filepath.Join(t.TempDir(), "issue.epub")
 	var stdout, stderr strings.Builder
-	if err := run([]string{"-o", output, server.URL + "/issues/demo/"}, &stdout, &stderr); err != nil {
+	if err := run([]string{"-allow-private-network", "-o", output, server.URL + "/issues/demo/"}, &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(stdout.String()) != output {
@@ -120,7 +120,7 @@ func TestEndToEndFailureLeavesNoPartialEPUB(t *testing.T) {
 
 			directory := t.TempDir()
 			output := filepath.Join(directory, "failed.epub")
-			err := run([]string{"-o", output, server.URL + "/issues/demo/"}, &strings.Builder{}, &strings.Builder{})
+			err := run([]string{"-allow-private-network", "-o", output, server.URL + "/issues/demo/"}, &strings.Builder{}, &strings.Builder{})
 			if err == nil {
 				t.Fatal("run succeeded")
 			}

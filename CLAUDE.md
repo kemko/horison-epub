@@ -25,4 +25,6 @@ make clean
 
 Перед завершением изменений обязательно запускай `make build`, `make lint`,
 `make coverage`, `make vuln`, `make release-check` и итоговый `make ci`.
+При изменении `.github/workflows/*.yml` также запускай
+`actionlint .github/workflows/ci.yml .github/workflows/release.yml`.
 Минимальный порог покрытия — 80%. Версии инструментов указаны в README.

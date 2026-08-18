@@ -14,6 +14,7 @@ import (
 	"image/png"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,42 +29,56 @@ const (
 	maxImageBytes    = 32 << 20
 	maxImagePixels   = 40_000_000
 	maxGIFFrames     = 1_000
+	maxFetchRequests = 2_000
+	maxFetchedBytes  = 512 << 20
 	defaultUserAgent = "horizont-epub/1.0"
 )
 
 type Fetcher struct {
-	client  *http.Client
-	tempDir string
-	images  map[string]FetchedImage
+	client       *http.Client
+	tempDir      string
+	images       map[string]FetchedImage
+	requests     int
+	fetchedBytes int64
 }
 
 type FetchedImage struct {
 	URL  string
 	Path string
-	MIME string
 }
 
 func NewFetcher() (*Fetcher, error) {
+	return newFetcher(false)
+}
+
+func newFetcher(allowPrivateNetworks bool) (*Fetcher, error) {
 	dir, err := os.MkdirTemp("", "horizont-epub-images-")
 	if err != nil {
 		return nil, fmt.Errorf("create image temporary directory: %w", err)
 	}
-	return &Fetcher{
-		client: &http.Client{
-			Timeout: 60 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 10 {
-					return fmt.Errorf("stopped after 10 redirects")
-				}
-				if _, err := parseHTTPURL(req.URL.String()); err != nil {
-					return fmt.Errorf("invalid redirect URL %q: %w", req.URL.String(), err)
-				}
-				return nil
-			},
-		},
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	if !allowPrivateNetworks {
+		transport.DialContext = dialPublicNetwork
+	}
+	fetcher := &Fetcher{
 		tempDir: dir,
 		images:  make(map[string]FetchedImage),
-	}, nil
+	}
+	fetcher.client = &http.Client{
+		Transport: transport,
+		Timeout:   60 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+			if _, err := parseHTTPURL(req.URL.String()); err != nil {
+				return fmt.Errorf("invalid redirect URL %q: %w", req.URL.String(), err)
+			}
+			return fetcher.consumeRequest()
+		},
+	}
+	return fetcher, nil
 }
 
 func (f *Fetcher) Close() error {
@@ -88,6 +103,9 @@ func (f *Fetcher) FetchHTML(rawURL string) ([]byte, string, error) {
 	}
 	if closeErr != nil {
 		return nil, "", fetchError(rawURL, "close HTML response: %w", closeErr)
+	}
+	if err := f.consumeBytes(int64(len(body))); err != nil {
+		return nil, "", fetchError(rawURL, "%w", err)
 	}
 	return body, finalURL, nil
 }
@@ -117,6 +135,9 @@ func (f *Fetcher) FetchImage(rawURL string) (FetchedImage, error) {
 	if closeErr != nil {
 		return FetchedImage{}, fetchError(rawURL, "close image response: %w", closeErr)
 	}
+	if err := f.consumeBytes(int64(len(body))); err != nil {
+		return FetchedImage{}, fetchError(rawURL, "%w", err)
+	}
 	kind, err := detectImageKind(body)
 	if err != nil {
 		return FetchedImage{}, fetchError(rawURL, "%w", err)
@@ -134,7 +155,7 @@ func (f *Fetcher) FetchImage(rawURL string) (FetchedImage, error) {
 		return FetchedImage{}, fetchError(rawURL, "store image: %w", err)
 	}
 
-	image := FetchedImage{URL: finalURL, Path: filePath, MIME: kind.mime}
+	image := FetchedImage{URL: finalURL, Path: filePath}
 	f.images[key] = image
 	return image, nil
 }
@@ -143,6 +164,9 @@ func (f *Fetcher) get(rawURL string) (*http.Response, string, error) {
 	key, parsed, err := canonicalURL(rawURL)
 	if err != nil {
 		return nil, "", fetchError(rawURL, "invalid URL: %w", err)
+	}
+	if err := f.consumeRequest(); err != nil {
+		return nil, "", fetchError(rawURL, "%w", err)
 	}
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, key, nil)
 	if err != nil {
@@ -173,6 +197,36 @@ func (f *Fetcher) get(rawURL string) (*http.Response, string, error) {
 		return nil, "", fetchError(rawURL, "invalid final URL: %w", err)
 	}
 	return response, finalURL, nil
+}
+
+func (f *Fetcher) consumeRequest() error {
+	if f.requests >= maxFetchRequests {
+		return fmt.Errorf("issue exceeds %d-request limit", maxFetchRequests)
+	}
+	f.requests++
+	return nil
+}
+
+func (f *Fetcher) consumeBytes(size int64) error {
+	if size > maxFetchedBytes-f.fetchedBytes {
+		return fmt.Errorf("issue exceeds %d-byte download limit", maxFetchedBytes)
+	}
+	f.fetchedBytes += size
+	return nil
+}
+
+func dialPublicNetwork(ctx context.Context, network, address string) (net.Conn, error) {
+	var dialer net.Dialer
+	connection, err := dialer.DialContext(ctx, network, address)
+	if err != nil {
+		return nil, err
+	}
+	remote, ok := connection.RemoteAddr().(*net.TCPAddr)
+	if !ok || remote.IP == nil || !remote.IP.IsGlobalUnicast() || remote.IP.IsPrivate() {
+		_ = connection.Close()
+		return nil, fmt.Errorf("refusing non-public destination %q", address)
+	}
+	return connection, nil
 }
 
 func canonicalURL(raw string) (string, *url.URL, error) {

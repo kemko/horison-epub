@@ -69,6 +69,17 @@ func TestParseIssueFixture(t *testing.T) {
 	}
 }
 
+func TestParseIssuePreservesAnnotationSpacingAcrossMarkup(t *testing.T) {
+	html := `<h1 class="entry-title">Выпуск</h1><div class="entry-content"><img src="/cover.jpg"><h2>Содержание</h2><h4>Раздел</h4><p>Автор. <a href="/issues/horisont/horisont-n-82/article/">Статья</a><br>Текст <em>с выделением</em> дальше</p></div>`
+	issue, err := ParseIssue(strings.NewReader(html), issueURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := issue.Sections[0].Articles[0].Annotation; got != "Текст с выделением дальше" {
+		t.Fatalf("annotation = %q", got)
+	}
+}
+
 func TestParseArticleFixture(t *testing.T) {
 	file, err := os.Open("testdata/article.html")
 	if err != nil {

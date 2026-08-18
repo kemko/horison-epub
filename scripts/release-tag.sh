@@ -1,14 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-run_gh() {
-  if [ -n "${RELEASE_GH_SCRIPT:-}" ]; then
-    bash "$RELEASE_GH_SCRIPT" "$@"
-  else
-    gh "$@"
-  fi
-}
-
 tag_for_run() {
   local run_number="${GITHUB_RUN_NUMBER:?GITHUB_RUN_NUMBER is required}"
   case "$run_number" in
@@ -23,12 +15,12 @@ tag_for_run() {
 tag_sha() {
   local tag="$1"
   local object object_type object_sha
-  object="$(run_gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" \
+  object="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" \
     --jq '.object.type + " " + .object.sha')" || return 1
   read -r object_type object_sha <<< "$object"
   [ -n "$object_type" ] && [ -n "$object_sha" ] || return 1
   if [ "$object_type" = tag ]; then
-    run_gh api "repos/${GITHUB_REPOSITORY}/git/tags/${object_sha}" --jq '.object.sha'
+    gh api "repos/${GITHUB_REPOSITORY}/git/tags/${object_sha}" --jq '.object.sha'
   else
     printf '%s\n' "$object_sha"
   fi
@@ -36,7 +28,7 @@ tag_sha() {
 
 ensure_tag() {
   local tag="$1"
-  local expected_sha="${GITHUB_SHA:?GITHUB_SHA is required}"
+  local expected_sha="${RELEASE_SHA:?RELEASE_SHA is required}"
   local existing_sha
 
   if existing_sha="$(tag_sha "$tag" 2>/dev/null)"; then
@@ -48,7 +40,7 @@ ensure_tag() {
     return 1
   fi
 
-  if run_gh api \
+  if gh api \
     --method POST \
     "repos/${GITHUB_REPOSITORY}/git/refs" \
     -f "ref=refs/tags/${tag}" \

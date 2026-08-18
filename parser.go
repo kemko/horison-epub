@@ -345,22 +345,22 @@ func stripHTMLText(body string) string {
 
 func visibleText(n *html.Node) string {
 	var b strings.Builder
-	var walk func(*html.Node)
-	walk = func(node *html.Node) {
-		if node.Type == html.TextNode {
-			b.WriteString(node.Data)
-			return
-		}
-		if node.Type == html.ElementNode && node.Data == "br" {
-			b.WriteByte('\n')
-			return
-		}
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-	}
-	walk(n)
+	appendVisibleText(&b, n)
 	return normalizeWhitespace(b.String())
+}
+
+func appendVisibleText(builder *strings.Builder, node *html.Node) {
+	if node.Type == html.TextNode {
+		builder.WriteString(node.Data)
+		return
+	}
+	if node.Type == html.ElementNode && node.Data == "br" {
+		builder.WriteByte('\n')
+		return
+	}
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		appendVisibleText(builder, child)
+	}
 }
 
 func collectTextBefore(root, target *html.Node) string {
@@ -395,7 +395,7 @@ func collectTextAfter(root, target *html.Node) string {
 	walk = func(node *html.Node) {
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
 			if found {
-				b.WriteString(visibleText(child))
+				appendVisibleText(&b, child)
 				continue
 			}
 			if child == target {

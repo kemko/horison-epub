@@ -38,8 +38,21 @@ func TestDocumentationListsMakeTargets(t *testing.T) {
 		if !strings.Contains(makefile, "\n"+target+":") {
 			t.Errorf("Makefile does not define documented target %q", target)
 		}
-		if !strings.Contains(readme, "make "+target) && !strings.Contains(claude, "make "+target) {
-			t.Errorf("documentation does not mention Makefile target %q", target)
+		if !documentsMakeTarget(readme, target) {
+			t.Errorf("README.md does not mention Makefile target %q", target)
+		}
+		if !documentsMakeTarget(claude, target) {
+			t.Errorf("CLAUDE.md does not mention Makefile target %q", target)
 		}
 	}
+}
+
+func documentsMakeTarget(document, target string) bool {
+	for line := range strings.SplitSeq(document, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == "make" && fields[1] == target {
+			return true
+		}
+	}
+	return false
 }

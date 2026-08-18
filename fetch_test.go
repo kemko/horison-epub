@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -22,6 +23,28 @@ import (
 
 func newTestFetcher(t *testing.T) *Fetcher {
 	t.Helper()
+	fetcher, err := newFetcher(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempDir := fetcher.tempDir
+	t.Cleanup(func() {
+		if err := fetcher.Close(); err != nil {
+			t.Errorf("close fetcher: %v", err)
+		}
+		if _, err := os.Stat(tempDir); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("temporary directory still exists: %v", err)
+		}
+	})
+	return fetcher
+}
+
+func TestFetcherRejectsPrivateNetworks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("request reached private HTTP server")
+	}))
+	defer server.Close()
+
 	fetcher, err := NewFetcher()
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +54,10 @@ func newTestFetcher(t *testing.T) *Fetcher {
 			t.Errorf("close fetcher: %v", err)
 		}
 	})
-	return fetcher
+	_, _, err = fetcher.FetchHTML(server.URL)
+	if err == nil || !strings.Contains(err.Error(), "non-public destination") {
+		t.Fatalf("private network error = %v", err)
+	}
 }
 
 func TestFetchHTMLSuccessRedirectAndRelativeURLs(t *testing.T) {
@@ -196,7 +222,7 @@ func TestFetchImageRedirectDeduplicatesAndStoresFile(t *testing.T) {
 	if first != second {
 		t.Fatalf("deduplicated image differs: first=%+v second=%+v", first, second)
 	}
-	if first.URL != server.URL+"/assets/photo.png" || first.MIME != "image/png" {
+	if first.URL != server.URL+"/assets/photo.png" {
 		t.Fatalf("image = %+v", first)
 	}
 	if filepath.Ext(first.Path) != ".png" {
@@ -245,7 +271,7 @@ func TestFetchImageSupportsValidFormats(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if fetched.MIME != tt.mime || filepath.Ext(fetched.Path) != tt.ext {
+			if filepath.Ext(fetched.Path) != tt.ext {
 				t.Fatalf("image = %+v", fetched)
 			}
 		})
@@ -331,6 +357,11 @@ func TestFetchImageRejectsUnsafeSVG(t *testing.T) {
 		{name: "escaped external CSS URL", body: `<svg xmlns="http://www.w3.org/2000/svg"><path fill="u\72l(https://example.test/paint.svg)"/></svg>`},
 		{name: "stylesheet", body: `<?xml-stylesheet href="https://example.test/style.css"?><svg xmlns="http://www.w3.org/2000/svg"/>`},
 		{name: "foreign object", body: `<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/></svg>`},
+		{name: "style element", body: `<svg xmlns="http://www.w3.org/2000/svg"><style>path { fill: red }</style></svg>`},
+		{name: "style attribute", body: `<svg xmlns="http://www.w3.org/2000/svg"><path style="fill: red"/></svg>`},
+		{name: "XML base", body: `<svg xmlns="http://www.w3.org/2000/svg" xml:base="https://example.test/"/>`},
+		{name: "foreign namespace", body: `<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="https://example.test/x"><x:item/></svg>`},
+		{name: "external src", body: `<svg xmlns="http://www.w3.org/2000/svg"><image src="https://example.test/image.png"/></svg>`},
 		{name: "animation", body: `<svg xmlns="http://www.w3.org/2000/svg"><animateColor/></svg>`},
 		{name: "malformed", body: `<svg xmlns="http://www.w3.org/2000/svg"><path></svg>`},
 	}
@@ -346,6 +377,30 @@ func TestFetchImageRejectsUnsafeSVG(t *testing.T) {
 				t.Fatalf("unsafe SVG error = %v", err)
 			}
 		})
+	}
+}
+
+func TestFetcherEnforcesIssueBudgets(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_, _ = w.Write([]byte("x"))
+	}))
+	defer server.Close()
+
+	fetcher := newTestFetcher(t)
+	fetcher.requests = maxFetchRequests
+	if _, _, err := fetcher.FetchHTML(server.URL); err == nil || !strings.Contains(err.Error(), "request limit") {
+		t.Fatalf("request limit error = %v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests after exhausted request budget = %d", requests.Load())
+	}
+
+	fetcher.requests = 0
+	fetcher.fetchedBytes = maxFetchedBytes
+	if _, _, err := fetcher.FetchHTML(server.URL); err == nil || !strings.Contains(err.Error(), "download limit") {
+		t.Fatalf("download limit error = %v", err)
 	}
 }
 

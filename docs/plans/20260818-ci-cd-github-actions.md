@@ -1,5 +1,7 @@
 # CI/CD для horizont-epub
 
+Status: Completed
+
 ## Overview
 
 Добавить единые локальные команды и GitHub Actions для сборки, тестов, покрытия не ниже 80%, golangci-lint, govulncheck, Dependabot security updates и автоматического patch-релиза каждого PR, попавшего в `master`.
@@ -9,14 +11,14 @@
 ## Context
 
 - Текущий модуль: `horizont-epub`, Go 1.25+, один `main` package.
-- Текущие проверки: `go test ./...`, `go test -race ./...`, `go vet ./...`.
-- Текущее покрытие: 83,1%, поэтому минимальный порог 80% не требует искусственных тестов.
-- CI/CD, Makefile, golangci-lint, Dependabot и GoReleaser пока отсутствуют.
-- Files involved: `Makefile`, `.golangci.yml`, `.goreleaser.yml`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.github/dependabot.yml`, `.gitignore`, `README.md`, `CLAUDE.md`.
+- Проверки выполняются через Makefile локально и в GitHub Actions.
+- Покрытие при реализации составило не менее 83,1% при минимальном пороге 80%.
+- Настроены CI/CD, golangci-lint, Dependabot и GoReleaser.
+- Files involved: `Makefile`, `.golangci.yml`, `.goreleaser.yml`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.github/dependabot.yml`, `.gitignore`, `scripts/release-tag.sh`, `scripts/release-notes.sh`, `README.md`, `CLAUDE.md`.
 - Related patterns: существующие Go-тесты и fail-fast проверки из завершённого плана проекта.
 - Dependencies:
   - golangci-lint v2.12.2 и `golangci/golangci-lint-action`.
-  - govulncheck v1.1.4 и официальный `golang/govulncheck-action`.
+  - govulncheck v1.1.4, устанавливаемый явно через `go install`.
   - GoReleaser v2.17.1 и `goreleaser/goreleaser-action`.
   - actionlint v1.7.12 для проверки workflow-файлов.
   - GitHub Actions закрепляются полными commit SHA с комментарием о версии.
@@ -92,8 +94,11 @@
 **Files:**
 
 - Create: `.github/workflows/release.yml`
+- Create: `scripts/release-tag.sh`
+- Create: `scripts/release-notes.sh`
+- Create: `release_tag_test.go`
 
-- [x] Запускать workflow на каждый push в `master`; через GitHub API требовать связанный merged PR и завершаться ошибкой для прямого push.
+- [x] Запускать релиз после успешного CI для каждого push в `master`; через GitHub API требовать ровно один соответствующий merged PR в `master` и завершаться ошибкой для прямого push.
 - [x] Использовать `GITHUB_RUN_NUMBER` как уникальный patch-компонент тега серии `v0.1.x`, исключая гонку между одновременными merge.
 - [x] Сделать создание тега идемпотентным: повторный запуск принимает существующий тег только при совпадении SHA.
 - [x] Формировать Markdown-описание из номера, заголовка, тела, автора и ссылки merged PR без интерполяции пользовательского текста в shell.
@@ -109,7 +114,7 @@
 - [x] Запустить `make lint`.
 - [x] Запустить `make test-race`.
 - [x] Запустить `make coverage` и подтвердить итог не ниже 80%.
-- [x] Запустить `make vuln` (skipped - pinned govulncheck v1.1.4 could not reach vuln.go.dev from the validation environment).
+- [x] Запустить `make vuln` (после временного сетевого сбоя повторная проверка v1.1.4 завершилась без найденных уязвимостей).
 - [x] Запустить `make release-check`.
 - [x] Проверить оба workflow через actionlint.
 - [x] Проверить Dependabot-конфигурацию автоматическим разбором YAML.
@@ -132,6 +137,6 @@
 ## Post-Completion
 
 - В настройках GitHub включить Dependabot alerts и Dependabot security updates; один `.github/dependabot.yml` не включает эти функции на уровне репозитория.
-- Защитить `master`: запретить direct push и требовать успешные CI jobs перед merge. Release workflow намеренно отклоняет push без связанного merged PR.
+- Защитить `master`: запретить direct push и требовать успешные CI jobs перед merge. Release workflow завершится ошибкой для push без ровно одного соответствующего merged PR, но не может отменить сам push.
 - Разрешить GitHub Actions создавать tags и Releases через `GITHUB_TOKEN`.
 - Живую публикацию проверить первым реальным merge после установки workflow; локальная копия сейчас не имеет GitHub remote, поэтому план не включает тестовую публикацию или удаление релиза.

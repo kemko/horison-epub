@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+state="$MOCK_GH_STATE"
+method=GET
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --method) method="$2"; shift 2 ;;
+    --jq|--header|-f) shift 2 ;;
+    repos/*) shift ;;
+    *) shift ;;
+  esac
+done
+if [ "$method" = POST ]; then
+  printf '%s\n' "$MOCK_GH_SHA" > "$state"
+  if [ "${MOCK_GH_POST_FAIL:-}" = 1 ]; then
+    exit 1
+  fi
+  exit 0
+fi
+if [ ! -s "$state" ]; then
+  exit 1
+fi
+sha=$(sed -n '1p' "$state")
+printf 'commit %s\n' "$sha"
