@@ -323,6 +323,7 @@ func TestFetchImageRejectsUnsafeSVG(t *testing.T) {
 		body string
 	}{
 		{name: "script", body: `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`},
+		{name: "SVG Tiny handler", body: `<svg xmlns="http://www.w3.org/2000/svg" xmlns:ev="http://www.w3.org/2001/xml-events"><rect><handler type="application/ecmascript" ev:event="click">alert(1)</handler></rect></svg>`},
 		{name: "event handler", body: `<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>`},
 		{name: "external image", body: `<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.test/image.png"/></svg>`},
 		{name: "external CSS URL", body: `<svg xmlns="http://www.w3.org/2000/svg"><path fill="url(https://example.test/paint.svg)"/></svg>`},

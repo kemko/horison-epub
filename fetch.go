@@ -426,7 +426,7 @@ func validateSVGElement(element xml.StartElement) error {
 		return fmt.Errorf("element %q is not allowed", element.Name.Local)
 	}
 	switch name {
-	case "script", "foreignobject", "iframe", "object", "embed", "audio", "video", "style", "link", "set", "discard":
+	case "script", "handler", "listener", "foreignobject", "iframe", "object", "embed", "audio", "video", "style", "link", "set", "discard":
 		return fmt.Errorf("element %q is not allowed", element.Name.Local)
 	}
 
