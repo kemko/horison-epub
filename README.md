@@ -72,6 +72,7 @@ Jobs выполняются параллельно:
 
 - `lint`: форматирование, actionlint и golangci-lint;
 - `test`: сборка, обычные и race-тесты, coverage с порогом 80%;
+- `windows-test`: сборка и тесты генерации EPUB на Windows;
 - `vuln`: govulncheck для `./...`;
 - `release-check`: проверка GoReleaser и snapshot-сборка без публикации.
 

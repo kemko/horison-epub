@@ -273,6 +273,41 @@ func TestBuildEPUBRejectsMissingDependenciesAndMetadata(t *testing.T) {
 	}
 }
 
+func TestValidateEPUBArchiveRejectsMissingSection(t *testing.T) {
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	header := &zip.FileHeader{Name: "mimetype", Method: zip.Store}
+	mimetype, err := writer.CreateHeader(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mimetype.Write([]byte("application/epub+zip")); err != nil {
+		t.Fatal(err)
+	}
+	packageFile, err := writer.Create("EPUB/package.opf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := packageFile.Write([]byte(`<package><manifest><item href="xhtml/article-001-001.xhtml"></item></manifest></package>`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(buffer.Bytes()), int64(buffer.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = validateEPUBArchive(archive, map[string]struct{}{
+		"mimetype":                         {},
+		"EPUB/package.opf":                 {},
+		"EPUB/xhtml/article-001-001.xhtml": {},
+	})
+	if err == nil || !strings.Contains(err.Error(), "article-001-001.xhtml") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 type zipEntry struct {
 	body   []byte
 	method uint16

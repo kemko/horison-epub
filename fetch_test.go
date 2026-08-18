@@ -11,6 +11,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -57,6 +58,31 @@ func TestFetcherRejectsPrivateNetworks(t *testing.T) {
 	_, _, err = fetcher.FetchHTML(server.URL)
 	if err == nil || !strings.Contains(err.Error(), "non-public destination") {
 		t.Fatalf("private network error = %v", err)
+	}
+}
+
+func TestPublicIPRejectsSpecialUseNetworks(t *testing.T) {
+	tests := []struct {
+		address string
+		public  bool
+	}{
+		{address: "8.8.8.8", public: true},
+		{address: "2606:4700:4700::1111", public: true},
+		{address: "10.0.0.1"},
+		{address: "100.64.0.1"},
+		{address: "192.0.2.1"},
+		{address: "198.18.0.1"},
+		{address: "203.0.113.1"},
+		{address: "2001:db8::1"},
+		{address: "64:ff9b:1::1"},
+		{address: "::ffff:127.0.0.1"},
+	}
+	for _, test := range tests {
+		t.Run(test.address, func(t *testing.T) {
+			if got := isPublicIP(net.ParseIP(test.address)); got != test.public {
+				t.Fatalf("isPublicIP(%q) = %t, want %t", test.address, got, test.public)
+			}
+		})
 	}
 }
 

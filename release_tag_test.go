@@ -121,6 +121,10 @@ func TestWorkflowsPinChecksAndReleaseOnlyAfterSuccessfulPushCI(t *testing.T) {
 		"github.com/rhysd/actionlint/cmd/actionlint@v1.7.12",
 		"golang.org/x/vuln/cmd/govulncheck@v1.1.4",
 		"actionlint .github/workflows/ci.yml .github/workflows/release.yml",
+		"group: ci-${{ github.event.pull_request.number || github.run_id }}",
+		"cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+		"runs-on: windows-2022",
+		"run: go test ./...",
 	} {
 		if !strings.Contains(ci, want) {
 			t.Errorf("CI workflow does not contain %q", want)
@@ -128,6 +132,9 @@ func TestWorkflowsPinChecksAndReleaseOnlyAfterSuccessfulPushCI(t *testing.T) {
 	}
 	if strings.Contains(ci, "govulncheck-action") || strings.Contains(ci, "@latest") {
 		t.Fatal("CI workflow uses an unpinned govulncheck path")
+	}
+	if strings.Contains(ci, "github.event.pull_request.number || github.ref") {
+		t.Fatal("CI workflow can cancel an earlier master push before release")
 	}
 
 	release := string(readTestFile(t, ".github/workflows/release.yml"))

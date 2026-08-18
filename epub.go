@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	stdhtml "html"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -107,7 +109,7 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writ
 				return fmt.Errorf("epub: material %q: %w", summary.Title, err)
 			}
 			articleFile := fmt.Sprintf("article-%03d-%03d.xhtml", sectionIndex+1, articleIndex+1)
-			if _, err := epubFile.AddSubSection(sectionFile, body, summary.Title, articleFile, cssPath); err != nil {
+			if _, err := epubFile.AddSection(body, summary.Title, articleFile, cssPath); err != nil {
 				return fmt.Errorf("epub: add material %q: %w", summary.Title, err)
 			}
 		}
@@ -115,8 +117,32 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writ
 	if err := epubFile.SetCover(coverPath, ""); err != nil {
 		return fmt.Errorf("epub: set cover: %w", err)
 	}
-	if _, err := epubFile.WriteTo(output); err != nil {
-		return fmt.Errorf("epub: write: %w", err)
+	return writeEPUBArchive(epubFile, issue, coverPath, output)
+}
+
+func writeEPUBArchive(epubFile *goepub.Epub, issue Issue, coverPath string, output io.Writer) (returnErr error) {
+	staged, err := os.CreateTemp("", "horizont-epub-build-*.epub")
+	if err != nil {
+		return fmt.Errorf("epub: create staged archive: %w", err)
+	}
+	defer func() {
+		if err := staged.Close(); err != nil {
+			returnErr = errors.Join(returnErr, fmt.Errorf("epub: close staged archive: %w", err))
+		}
+		if err := os.Remove(staged.Name()); err != nil {
+			returnErr = errors.Join(returnErr, fmt.Errorf("epub: remove staged archive: %w", err))
+		}
+	}()
+
+	if _, err := epubFile.WriteTo(staged); err != nil {
+		return fmt.Errorf("epub: write staged archive: %w", err)
+	}
+	info, err := staged.Stat()
+	if err != nil {
+		return fmt.Errorf("epub: inspect staged archive: %w", err)
+	}
+	if err := writeValidatedEPUB(staged, info.Size(), output, issue, coverPath); err != nil {
+		return fmt.Errorf("epub: validate staged archive: %w", err)
 	}
 	return nil
 }
