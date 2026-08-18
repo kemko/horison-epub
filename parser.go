@@ -53,15 +53,13 @@ func ParseIssue(r io.Reader, issueURL string) (Issue, error) {
 
 	var contentsHeading *html.Node
 	var coverRaw string
-	seenContents := false
 	content.Find("img, h1, h2, h3, h4, h5, h6").EachWithBreak(func(_ int, selection *goquery.Selection) bool {
 		n := firstNode(selection)
 		if isContentsHeading(n) {
 			contentsHeading = n
-			seenContents = true
 			return false
 		}
-		if !seenContents && n.Data == "img" && coverRaw == "" {
+		if n.Data == "img" && coverRaw == "" {
 			coverRaw = attr(n, "src")
 			if coverRaw == "" {
 				coverRaw = attr(n, "data-src")
@@ -289,7 +287,7 @@ func removeServiceMarkup(content *goquery.Selection) {
 }
 
 func removeEmptyNodes(content *goquery.Selection) {
-	content.Find("p, div, section, aside, nav, header, footer, br").Each(func(_ int, selection *goquery.Selection) {
+	content.Find("p, div, section, aside, nav, header, footer").Each(func(_ int, selection *goquery.Selection) {
 		n := firstNode(selection)
 		if !hasMeaningfulContent(n) {
 			detachNode(n)
@@ -332,7 +330,7 @@ func stripHTMLText(body string) string {
 	if err != nil {
 		return ""
 	}
-	return visibleText(doc.Selection.Nodes[0])
+	return visibleText(doc.Nodes[0])
 }
 
 func visibleText(n *html.Node) string {

@@ -2,7 +2,10 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
+	"encoding/xml"
 	"fmt"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -51,16 +54,8 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 	}
 	sharedURL := server.URL + "/shared.png"
 	articles := []Article{
-		{
-			Title: "Первая статья",
-			URL:   issueURL + "first/",
-			HTML:  fmt.Sprintf(`<p>Полный текст первой статьи.</p><figure><img src="%s" srcset="ignored 2x" sizes="100vw" data-wp-image="1" alt="Иллюстрация"><figcaption>Подпись к иллюстрации</figcaption></figure><script>удалить</script>`, sharedURL),
-		},
-		{
-			Title: "Вторая статья",
-			URL:   issueURL + "second/",
-			HTML:  fmt.Sprintf(`<h2>Заголовок</h2><p>Полный текст второй статьи.</p><p><img src="%s" alt="Повтор"></p>`, sharedURL),
-		},
+		parseTestArticle(t, "Первая статья", issueURL+"first/", fmt.Sprintf(`<p>Полный текст первой статьи.</p><figure><img src="%s" srcset="ignored 2x" sizes="100vw" data-wp-image="1" alt="Иллюстрация"><figcaption>Подпись к иллюстрации</figcaption></figure><script>удалить</script>`, sharedURL)),
+		parseTestArticle(t, "Вторая статья", issueURL+"second/", fmt.Sprintf(`<h2>Заголовок</h2><p>Полный текст второй статьи.</p><p><img src="%s" alt="Повтор"></p>`, sharedURL)),
 	}
 
 	fetcher := newTestFetcher(t)
@@ -79,7 +74,7 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 	if entries["mimetype"].method != zip.Store {
 		t.Fatal("mimetype must be stored without compression")
 	}
-	for _, name := range []string{"META-INF/container.xml", "EPUB/package.opf", "EPUB/nav.xhtml", "EPUB/css/horizont.css", "EPUB/css/cover.css", "EPUB/xhtml/cover.xhtml", "EPUB/xhtml/contents.xhtml", "EPUB/xhtml/article-001-001.xhtml", "EPUB/xhtml/article-002-001.xhtml", "EPUB/images/cover.png", "EPUB/images/image-001.png"} {
+	for _, name := range []string{"META-INF/container.xml", "EPUB/package.opf", "EPUB/nav.xhtml", "EPUB/toc.ncx", "EPUB/css/horizont.css", "EPUB/css/cover.css", "EPUB/xhtml/cover.xhtml", "EPUB/xhtml/contents.xhtml", "EPUB/xhtml/article-001-001.xhtml", "EPUB/xhtml/article-002-001.xhtml", "EPUB/images/cover.png", "EPUB/images/image-001.png"} {
 		if _, ok := entries[name]; !ok {
 			t.Errorf("missing archive entry %q", name)
 		}
@@ -92,6 +87,11 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 	}
 	if imageCount != 1 {
 		t.Fatalf("article image count = %d, want 1", imageCount)
+	}
+	for _, name := range []string{"EPUB/images/cover.png", "EPUB/images/image-001.png"} {
+		if _, err := png.DecodeConfig(bytes.NewReader(entries[name].body)); err != nil {
+			t.Errorf("%s is not a valid PNG: %v", name, err)
+		}
 	}
 
 	packageXML := string(entries["EPUB/package.opf"].body)
@@ -106,6 +106,7 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 			t.Errorf("nav.xhtml does not contain %q", want)
 		}
 	}
+	assertNestedNavigation(t, entries)
 	contents := string(entries["EPUB/xhtml/contents.xhtml"].body)
 	for _, want := range []string{"Автор 1", "Первая статья", "Аннотация 1", "Автор 2", "Аннотация 2", "article-001-001.xhtml"} {
 		if !strings.Contains(contents, want) {
@@ -122,6 +123,98 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 		if strings.Contains(article, unwanted) {
 			t.Errorf("article XHTML contains removed value %q", unwanted)
 		}
+	}
+}
+
+func parseTestArticle(t *testing.T, title, articleURL, body string) Article {
+	t.Helper()
+	article, err := ParseArticle(strings.NewReader(fmt.Sprintf(`<h1 class="entry-title">%s</h1><div class="entry-content">%s</div>`, title, body)), articleURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return article
+}
+
+type navigationWant struct {
+	title    string
+	href     string
+	children []navigationWant
+}
+
+type navItem struct {
+	Link struct {
+		Href string `xml:"href,attr"`
+		Text string `xml:",chardata"`
+	} `xml:"a"`
+	Children []navItem `xml:"ol>li"`
+}
+
+type ncxPoint struct {
+	Text    string `xml:"navLabel>text"`
+	Content struct {
+		Src string `xml:"src,attr"`
+	} `xml:"content"`
+	Children []ncxPoint `xml:"navPoint"`
+}
+
+func assertNestedNavigation(t *testing.T, entries map[string]zipEntry) {
+	t.Helper()
+	want := []navigationWant{
+		{title: "Содержание", href: "xhtml/contents.xhtml"},
+		{title: "Первый блок", href: "xhtml/section-001.xhtml", children: []navigationWant{{title: "Первая статья", href: "xhtml/article-001-001.xhtml"}}},
+		{title: "Второй блок", href: "xhtml/section-002.xhtml", children: []navigationWant{{title: "Вторая статья", href: "xhtml/article-002-001.xhtml"}}},
+	}
+
+	var nav struct {
+		Body struct {
+			Nav struct {
+				Items []navItem `xml:"ol>li"`
+			} `xml:"nav"`
+		} `xml:"body"`
+	}
+	if err := xml.Unmarshal(entries["EPUB/nav.xhtml"].body, &nav); err != nil {
+		t.Fatal(err)
+	}
+	assertNavItems(t, entries, nav.Body.Nav.Items, want)
+
+	var ncx struct {
+		Points []ncxPoint `xml:"navMap>navPoint"`
+	}
+	if err := xml.Unmarshal(entries["EPUB/toc.ncx"].body, &ncx); err != nil {
+		t.Fatal(err)
+	}
+	assertNCXPoints(t, entries, ncx.Points, want)
+}
+
+func assertNavItems(t *testing.T, entries map[string]zipEntry, got []navItem, want []navigationWant) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("nav items = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i].Link.Text != want[i].title || got[i].Link.Href != want[i].href {
+			t.Errorf("nav item %d = %q %q, want %q %q", i, got[i].Link.Text, got[i].Link.Href, want[i].title, want[i].href)
+		}
+		if _, ok := entries["EPUB/"+got[i].Link.Href]; !ok {
+			t.Errorf("nav href %q does not resolve", got[i].Link.Href)
+		}
+		assertNavItems(t, entries, got[i].Children, want[i].children)
+	}
+}
+
+func assertNCXPoints(t *testing.T, entries map[string]zipEntry, got []ncxPoint, want []navigationWant) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("NCX points = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i].Text != want[i].title || got[i].Content.Src != want[i].href {
+			t.Errorf("NCX point %d = %q %q, want %q %q", i, got[i].Text, got[i].Content.Src, want[i].title, want[i].href)
+		}
+		if _, ok := entries["EPUB/"+got[i].Content.Src]; !ok {
+			t.Errorf("NCX src %q does not resolve", got[i].Content.Src)
+		}
+		assertNCXPoints(t, entries, got[i].Children, want[i].children)
 	}
 }
 
@@ -156,7 +249,11 @@ func readZipEntries(t *testing.T, path string) map[string]zipEntry {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer archive.Close()
+	defer func() {
+		if err := archive.Close(); err != nil {
+			t.Errorf("close EPUB: %v", err)
+		}
+	}()
 
 	entries := make(map[string]zipEntry, len(archive.File))
 	for _, file := range archive.File {

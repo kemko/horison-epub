@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/xml"
+	"errors"
 	"fmt"
+	"image/gif"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"mime"
 	"net/http"
@@ -13,7 +17,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -24,13 +27,9 @@ const (
 )
 
 type Fetcher struct {
-	Client    *http.Client
-	UserAgent string
-	TempDir   string
-
-	imageMu  sync.Mutex
-	images   map[string]FetchedImage
-	ownedDir bool
+	client  *http.Client
+	tempDir string
+	images  map[string]FetchedImage
 }
 
 type FetchedImage struct {
@@ -45,27 +44,28 @@ func NewFetcher() (*Fetcher, error) {
 		return nil, fmt.Errorf("create image temporary directory: %w", err)
 	}
 	return &Fetcher{
-		Client: &http.Client{
+		client: &http.Client{
 			Timeout: 60 * time.Second,
-			CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return fmt.Errorf("stopped after 10 redirects")
+				}
 				if _, err := parseHTTPURL(req.URL.String()); err != nil {
 					return fmt.Errorf("invalid redirect URL %q: %w", req.URL.String(), err)
 				}
 				return nil
 			},
 		},
-		UserAgent: defaultUserAgent,
-		TempDir:   dir,
-		images:    make(map[string]FetchedImage),
-		ownedDir:  true,
+		tempDir: dir,
+		images:  make(map[string]FetchedImage),
 	}, nil
 }
 
 func (f *Fetcher) Close() error {
-	if f == nil || !f.ownedDir || f.TempDir == "" {
+	if f == nil || f.tempDir == "" {
 		return nil
 	}
-	return os.RemoveAll(f.TempDir)
+	return os.RemoveAll(f.tempDir)
 }
 
 func (f *Fetcher) FetchHTML(rawURL string) ([]byte, string, error) {
@@ -73,11 +73,16 @@ func (f *Fetcher) FetchHTML(rawURL string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	defer response.Body.Close()
-
 	body, err := readLimited(response.Body, maxHTMLBytes)
+	closeErr := response.Body.Close()
 	if err != nil {
+		if closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close response: %w", closeErr))
+		}
 		return nil, "", fetchError(rawURL, "read HTML: %w", err)
+	}
+	if closeErr != nil {
+		return nil, "", fetchError(rawURL, "close HTML response: %w", closeErr)
 	}
 	return body, finalURL, nil
 }
@@ -88,8 +93,6 @@ func (f *Fetcher) FetchImage(rawURL string) (FetchedImage, error) {
 		return FetchedImage{}, fetchError(rawURL, "invalid URL: %w", err)
 	}
 
-	f.imageMu.Lock()
-	defer f.imageMu.Unlock()
 	if image, ok := f.images[key]; ok {
 		return image, nil
 	}
@@ -98,15 +101,20 @@ func (f *Fetcher) FetchImage(rawURL string) (FetchedImage, error) {
 	if err != nil {
 		return FetchedImage{}, err
 	}
-	defer response.Body.Close()
-
 	body, err := readLimited(response.Body, maxImageBytes)
+	closeErr := response.Body.Close()
 	if err != nil {
+		if closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close response: %w", closeErr))
+		}
 		return FetchedImage{}, fetchError(rawURL, "read image: %w", err)
 	}
-	kind, ok := detectImageKind(body)
-	if !ok {
-		return FetchedImage{}, fetchError(rawURL, "unsupported image MIME")
+	if closeErr != nil {
+		return FetchedImage{}, fetchError(rawURL, "close image response: %w", closeErr)
+	}
+	kind, err := detectImageKind(body)
+	if err != nil {
+		return FetchedImage{}, fetchError(rawURL, "%w", err)
 	}
 	if err := validateImageMIME(response.Header.Get("Content-Type"), kind.mime); err != nil {
 		return FetchedImage{}, fetchError(rawURL, "%w", err)
@@ -115,28 +123,9 @@ func (f *Fetcher) FetchImage(rawURL string) (FetchedImage, error) {
 		return FetchedImage{}, fetchError(rawURL, "%w", err)
 	}
 
-	if f.TempDir == "" {
-		return FetchedImage{}, fetchError(rawURL, "missing image temporary directory")
-	}
-	if err := os.MkdirAll(f.TempDir, 0o755); err != nil {
-		return FetchedImage{}, fetchError(rawURL, "create image temporary directory: %w", err)
-	}
 	name := fmt.Sprintf("image-%x%s", sha256.Sum256([]byte(key)), kind.ext)
-	filePath := filepath.Join(f.TempDir, name)
-	temporary, err := os.CreateTemp(f.TempDir, ".image-*")
-	if err != nil {
-		return FetchedImage{}, fetchError(rawURL, "create temporary image: %w", err)
-	}
-	temporaryName := temporary.Name()
-	defer os.Remove(temporaryName)
-	if _, err := temporary.Write(body); err != nil {
-		temporary.Close()
-		return FetchedImage{}, fetchError(rawURL, "write temporary image: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return FetchedImage{}, fetchError(rawURL, "close temporary image: %w", err)
-	}
-	if err := os.Rename(temporaryName, filePath); err != nil {
+	filePath := filepath.Join(f.tempDir, name)
+	if err := os.WriteFile(filePath, body, 0o600); err != nil {
 		return FetchedImage{}, fetchError(rawURL, "store image: %w", err)
 	}
 
@@ -150,26 +139,21 @@ func (f *Fetcher) get(rawURL string) (*http.Response, string, error) {
 	if err != nil {
 		return nil, "", fetchError(rawURL, "invalid URL: %w", err)
 	}
-	client := f.Client
-	if client == nil {
-		client = &http.Client{Timeout: 60 * time.Second}
-	}
 	request, err := http.NewRequest(http.MethodGet, key, nil)
 	if err != nil {
 		return nil, "", fetchError(rawURL, "create request: %w", err)
 	}
-	userAgent := f.UserAgent
-	if userAgent == "" {
-		userAgent = defaultUserAgent
-	}
-	request.Header.Set("User-Agent", userAgent)
-	response, err := client.Do(request)
+	request.Header.Set("User-Agent", defaultUserAgent)
+	response, err := f.client.Do(request)
 	if err != nil {
 		return nil, "", fetchError(rawURL, "request: %w", err)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		response.Body.Close()
-		return nil, "", fetchError(rawURL, "unexpected HTTP status %s", response.Status)
+		statusErr := fmt.Errorf("unexpected HTTP status %s", response.Status)
+		if closeErr := response.Body.Close(); closeErr != nil {
+			statusErr = errors.Join(statusErr, fmt.Errorf("close response: %w", closeErr))
+		}
+		return nil, "", fetchError(rawURL, "%w", statusErr)
 	}
 
 	final := parsed
@@ -178,7 +162,9 @@ func (f *Fetcher) get(rawURL string) (*http.Response, string, error) {
 	}
 	finalURL, _, err := canonicalURL(final.String())
 	if err != nil {
-		response.Body.Close()
+		if closeErr := response.Body.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close response: %w", closeErr))
+		}
 		return nil, "", fetchError(rawURL, "invalid final URL: %w", err)
 	}
 	return response, finalURL, nil
@@ -209,31 +195,153 @@ type imageKind struct {
 	ext  string
 }
 
-func detectImageKind(body []byte) (imageKind, bool) {
+func detectImageKind(body []byte) (imageKind, error) {
+	var kind imageKind
+	var err error
 	switch {
 	case len(body) >= 3 && body[0] == 0xff && body[1] == 0xd8 && body[2] == 0xff:
-		return imageKind{mime: "image/jpeg", ext: ".jpg"}, true
+		kind = imageKind{mime: "image/jpeg", ext: ".jpg"}
+		_, err = jpeg.DecodeConfig(bytes.NewReader(body))
 	case bytes.HasPrefix(body, []byte("\x89PNG\r\n\x1a\n")):
-		return imageKind{mime: "image/png", ext: ".png"}, true
+		kind = imageKind{mime: "image/png", ext: ".png"}
+		_, err = png.DecodeConfig(bytes.NewReader(body))
 	case bytes.HasPrefix(body, []byte("GIF87a")) || bytes.HasPrefix(body, []byte("GIF89a")):
-		return imageKind{mime: "image/gif", ext: ".gif"}, true
-	case isSVG(body):
-		return imageKind{mime: "image/svg+xml", ext: ".svg"}, true
+		kind = imageKind{mime: "image/gif", ext: ".gif"}
+		_, err = gif.DecodeConfig(bytes.NewReader(body))
 	default:
-		return imageKind{}, false
+		isSVG, svgErr := validateSVG(body)
+		if !isSVG {
+			return imageKind{}, fmt.Errorf("unsupported image MIME")
+		}
+		if svgErr != nil {
+			return imageKind{}, fmt.Errorf("invalid SVG: %w", svgErr)
+		}
+		return imageKind{mime: "image/svg+xml", ext: ".svg"}, nil
+	}
+	if err != nil {
+		return imageKind{}, fmt.Errorf("invalid %s image: %w", kind.mime, err)
+	}
+	return kind, nil
+}
+
+func validateSVG(body []byte) (bool, error) {
+	decoder := xml.NewDecoder(bytes.NewReader(body))
+	var pendingErr error
+	seenRoot := false
+	depth := 0
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			if !seenRoot {
+				return false, nil
+			}
+			if depth != 0 {
+				return true, fmt.Errorf("unclosed root element")
+			}
+			return true, nil
+		}
+		if err != nil {
+			return seenRoot, err
+		}
+		switch value := token.(type) {
+		case xml.StartElement:
+			if depth == 0 {
+				if seenRoot {
+					return true, fmt.Errorf("multiple root elements")
+				}
+				if strings.ToLower(value.Name.Local) != "svg" {
+					return false, nil
+				}
+				seenRoot = true
+				if pendingErr != nil {
+					return true, pendingErr
+				}
+			}
+			depth++
+			if err := validateSVGElement(value); err != nil {
+				return true, err
+			}
+		case xml.EndElement:
+			if seenRoot {
+				depth--
+			}
+		case xml.CharData:
+			if depth == 0 && strings.TrimSpace(string(value)) != "" {
+				pendingErr = fmt.Errorf("data outside root element")
+				if seenRoot {
+					return true, pendingErr
+				}
+			}
+		case xml.ProcInst:
+			if strings.ToLower(value.Target) != "xml" {
+				pendingErr = fmt.Errorf("processing instructions are not allowed")
+				if seenRoot {
+					return true, pendingErr
+				}
+			}
+		case xml.Directive:
+			pendingErr = fmt.Errorf("directives are not allowed")
+			if seenRoot {
+				return true, pendingErr
+			}
+		}
 	}
 }
 
-func isSVG(body []byte) bool {
-	decoder := xml.NewDecoder(bytes.NewReader(body))
-	for {
-		token, err := decoder.Token()
-		if err != nil {
-			return false
+func validateSVGElement(element xml.StartElement) error {
+	const svgNamespace = "http://www.w3.org/2000/svg"
+	if element.Name.Space != "" && element.Name.Space != svgNamespace {
+		return fmt.Errorf("element %q uses a foreign namespace", element.Name.Local)
+	}
+
+	name := strings.ToLower(element.Name.Local)
+	if strings.HasPrefix(name, "animate") {
+		return fmt.Errorf("element %q is not allowed", element.Name.Local)
+	}
+	switch name {
+	case "script", "foreignobject", "iframe", "object", "embed", "audio", "video", "style", "link", "set", "discard":
+		return fmt.Errorf("element %q is not allowed", element.Name.Local)
+	}
+
+	for _, attribute := range element.Attr {
+		name := strings.ToLower(attribute.Name.Local)
+		switch {
+		case strings.HasPrefix(name, "on"):
+			return fmt.Errorf("event attribute %q is not allowed", attribute.Name.Local)
+		case name == "style":
+			return fmt.Errorf("style attributes are not allowed")
+		case name == "base" && attribute.Name.Space == "http://www.w3.org/XML/1998/namespace":
+			return fmt.Errorf("xml:base is not allowed")
+		case name == "href" || name == "src":
+			if !strings.HasPrefix(strings.TrimSpace(attribute.Value), "#") {
+				return fmt.Errorf("external reference in %q is not allowed", attribute.Name.Local)
+			}
 		}
-		if start, ok := token.(xml.StartElement); ok {
-			return start.Name.Local == "svg"
+		if err := validateSVGURLFunctions(attribute.Value); err != nil {
+			return fmt.Errorf("attribute %q: %w", attribute.Name.Local, err)
 		}
+	}
+	return nil
+}
+
+func validateSVGURLFunctions(value string) error {
+	for lower := strings.ToLower(value); ; {
+		start := strings.Index(lower, "url(")
+		if start < 0 {
+			return nil
+		}
+		value = value[start+4:]
+		lower = lower[start+4:]
+		end := strings.Index(lower, ")")
+		if end < 0 {
+			return fmt.Errorf("malformed URL reference")
+		}
+		reference := strings.Trim(strings.TrimSpace(value[:end]), `"'`)
+		if !strings.HasPrefix(reference, "#") {
+			return fmt.Errorf("external URL reference is not allowed")
+		}
+		value = value[end+1:]
+		lower = lower[end+1:]
 	}
 }
 
@@ -245,7 +353,7 @@ func validateImageMIME(header, actual string) error {
 	if err != nil {
 		return fmt.Errorf("invalid image MIME %q", header)
 	}
-	if mediaType != actual && !(actual == "image/jpeg" && mediaType == "image/jpg") {
+	if mediaType != actual && (actual != "image/jpeg" || mediaType != "image/jpg") {
 		return fmt.Errorf("image MIME %q does not match content %q", mediaType, actual)
 	}
 	return nil

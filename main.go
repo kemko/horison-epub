@@ -20,13 +20,15 @@ func main() {
 	}
 }
 
-func run(args []string, stdout, stderr io.Writer) error {
+func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 	flags := flag.NewFlagSet("horizont-epub", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	output := flags.String("o", "", "output EPUB path")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(stderr, "usage: horizont-epub [-o output.epub] <issue-url>")
+			if _, err := fmt.Fprintln(stderr, "usage: horizont-epub [-o output.epub] <issue-url>"); err != nil {
+				return fmt.Errorf("write help: %w", err)
+			}
 			return nil
 		}
 		return fmt.Errorf("invalid arguments: %w", err)
@@ -51,7 +53,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("create fetcher: %w", err)
 	}
-	defer fetcher.Close()
+	defer func() {
+		if err := fetcher.Close(); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("remove image temporary directory: %w", err))
+		}
+	}()
 
 	issueBody, finalIssueURL, err := fetcher.FetchHTML(issueURL)
 	if err != nil {
@@ -62,7 +68,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("parse issue %s: %w", finalIssueURL, err)
 	}
 
-	articles := make([]Article, 0, articleCount(issue))
+	var articles []Article
 	for _, section := range issue.Sections {
 		for _, summary := range section.Articles {
 			body, finalArticleURL, err := fetcher.FetchHTML(summary.URL)
@@ -80,15 +86,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		}
 	}
 
-	return writeEPUB(issue, articles, fetcher, outputPath, stdout, stderr)
-}
-
-func articleCount(issue Issue) int {
-	count := 0
-	for _, section := range issue.Sections {
-		count += len(section.Articles)
-	}
-	return count
+	return writeEPUB(issue, articles, fetcher, outputPath, stdout)
 }
 
 func outputPathFor(issueURL, requested string) (string, error) {
@@ -122,7 +120,7 @@ func refuseExistingOutput(outputPath string) error {
 	}
 }
 
-func writeEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath string, stdout, _ io.Writer) error {
+func writeEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath string, stdout io.Writer) (resultErr error) {
 	absoluteOutput, err := filepath.Abs(outputPath)
 	if err != nil {
 		return fmt.Errorf("resolve output %q: %w", outputPath, err)
@@ -134,20 +132,29 @@ func writeEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath str
 	}
 	temporaryPath := temporary.Name()
 	if err := temporary.Close(); err != nil {
-		os.Remove(temporaryPath)
-		return fmt.Errorf("close temporary output: %w", err)
+		cleanupErr := os.Remove(temporaryPath)
+		if cleanupErr != nil {
+			cleanupErr = fmt.Errorf("remove temporary output: %w", cleanupErr)
+		}
+		return errors.Join(fmt.Errorf("close temporary output: %w", err), cleanupErr)
 	}
-	defer os.Remove(temporaryPath)
+	defer func() {
+		if err := os.Remove(temporaryPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			resultErr = errors.Join(resultErr, fmt.Errorf("remove temporary output: %w", err))
+		}
+	}()
 
 	if err := BuildEPUB(issue, articles, fetcher, temporaryPath); err != nil {
 		return err
 	}
-	if err := refuseExistingOutput(outputPath); err != nil {
-		return err
-	}
-	if err := os.Rename(temporaryPath, absoluteOutput); err != nil {
+	if err := os.Link(temporaryPath, absoluteOutput); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("output %q already exists", outputPath)
+		}
 		return fmt.Errorf("publish output %q: %w", outputPath, err)
 	}
-	fmt.Fprintln(stdout, outputPath)
+	if _, err := fmt.Fprintln(stdout, outputPath); err != nil {
+		return fmt.Errorf("print output path: %w", err)
+	}
 	return nil
 }

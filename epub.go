@@ -30,18 +30,6 @@ figcaption { font-size: 0.9em; font-style: italic; }
 img { height: auto; max-width: 100%; }
 `
 
-type epubArticlePlan struct {
-	summary Article
-	body    string
-	file    string
-}
-
-type epubSectionPlan struct {
-	section Section
-	file    string
-	body    []epubArticlePlan
-}
-
 // BuildEPUB writes a complete EPUB from a parsed issue and its parsed articles.
 // Articles are matched by URL so callers may fetch and parse them sequentially.
 func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath string) error {
@@ -85,12 +73,15 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath str
 		return fmt.Errorf("epub: cover: %w", err)
 	}
 
-	sections := make([]epubSectionPlan, 0, len(issue.Sections))
+	contents := renderContents(issue)
+	if _, err := epubFile.AddSection(contents, "Содержание", "contents.xhtml", cssPath); err != nil {
+		return fmt.Errorf("epub: add contents: %w", err)
+	}
 	for sectionIndex, section := range issue.Sections {
-		plan := epubSectionPlan{
-			section: section,
-			file:    fmt.Sprintf("section-%03d.xhtml", sectionIndex+1),
-			body:    make([]epubArticlePlan, 0, len(section.Articles)),
+		sectionFile := fmt.Sprintf("section-%03d.xhtml", sectionIndex+1)
+		sectionBody := fmt.Sprintf("<h1>%s</h1>", stdhtml.EscapeString(section.Title))
+		if _, err := epubFile.AddSection(sectionBody, section.Title, sectionFile, cssPath); err != nil {
+			return fmt.Errorf("epub: add section %q: %w", section.Title, err)
 		}
 		for articleIndex, summary := range section.Articles {
 			key, _, err := canonicalURL(summary.URL)
@@ -114,27 +105,9 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath str
 			if err != nil {
 				return fmt.Errorf("epub: material %q: %w", summary.Title, err)
 			}
-			plan.body = append(plan.body, epubArticlePlan{
-				summary: summary,
-				body:    body,
-				file:    fmt.Sprintf("article-%03d-%03d.xhtml", sectionIndex+1, articleIndex+1),
-			})
-		}
-		sections = append(sections, plan)
-	}
-
-	contents := renderContents(sections)
-	if _, err := epubFile.AddSection(contents, "Содержание", "contents.xhtml", cssPath); err != nil {
-		return fmt.Errorf("epub: add contents: %w", err)
-	}
-	for _, section := range sections {
-		sectionBody := fmt.Sprintf("<h1>%s</h1>", stdhtml.EscapeString(section.section.Title))
-		if _, err := epubFile.AddSection(sectionBody, section.section.Title, section.file, cssPath); err != nil {
-			return fmt.Errorf("epub: add section %q: %w", section.section.Title, err)
-		}
-		for _, article := range section.body {
-			if _, err := epubFile.AddSubSection(section.file, article.body, article.summary.Title, article.file, cssPath); err != nil {
-				return fmt.Errorf("epub: add material %q: %w", article.summary.Title, err)
+			articleFile := fmt.Sprintf("article-%03d-%03d.xhtml", sectionIndex+1, articleIndex+1)
+			if _, err := epubFile.AddSubSection(sectionFile, body, summary.Title, articleFile, cssPath); err != nil {
+				return fmt.Errorf("epub: add material %q: %w", summary.Title, err)
 			}
 		}
 	}
@@ -192,17 +165,18 @@ func (r *epubResources) add(rawURL, name string) (string, error) {
 	return path, nil
 }
 
-func renderContents(plans []epubSectionPlan) string {
+func renderContents(issue Issue) string {
 	var builder strings.Builder
 	builder.WriteString(`<h1>Содержание</h1><div class="contents">`)
-	for _, section := range plans {
-		fmt.Fprintf(&builder, "<h2>%s</h2><ol>", stdhtml.EscapeString(section.section.Title))
-		for _, article := range section.body {
-			fmt.Fprintf(&builder, `<li><a href="%s">%s</a>`, stdhtml.EscapeString(article.file), stdhtml.EscapeString(article.summary.Title))
-			if author := strings.TrimSpace(article.summary.Author); author != "" {
+	for sectionIndex, section := range issue.Sections {
+		fmt.Fprintf(&builder, "<h2>%s</h2><ol>", stdhtml.EscapeString(section.Title))
+		for articleIndex, article := range section.Articles {
+			articleFile := fmt.Sprintf("article-%03d-%03d.xhtml", sectionIndex+1, articleIndex+1)
+			fmt.Fprintf(&builder, `<li><a href="%s">%s</a>`, articleFile, stdhtml.EscapeString(article.Title))
+			if author := strings.TrimSpace(article.Author); author != "" {
 				fmt.Fprintf(&builder, " — %s", stdhtml.EscapeString(author))
 			}
-			if annotation := strings.TrimSpace(article.summary.Annotation); annotation != "" {
+			if annotation := strings.TrimSpace(article.Annotation); annotation != "" {
 				fmt.Fprintf(&builder, `<p class="annotation">%s</p>`, stdhtml.EscapeString(annotation))
 			}
 			builder.WriteString("</li>")
@@ -214,8 +188,7 @@ func renderContents(plans []epubSectionPlan) string {
 }
 
 func renderArticleBody(article Article, resources *epubResources) (string, error) {
-	body := sanitizeHTML(article.HTML)
-	body, err := rewriteArticleImages(body, resources)
+	body, err := rewriteArticleImages(article.HTML, resources)
 	if err != nil {
 		return "", err
 	}
@@ -255,13 +228,6 @@ func rewriteArticleImages(body string, resources *epubResources) (string, error)
 			return
 		}
 		setAttr(n, "src", path)
-		removeAttr(n, "srcset")
-		removeAttr(n, "sizes")
-		for i := len(n.Attr) - 1; i >= 0; i-- {
-			if strings.HasPrefix(strings.ToLower(n.Attr[i].Key), "data-") {
-				n.Attr = append(n.Attr[:i], n.Attr[i+1:]...)
-			}
-		}
 	})
 	if firstErr != nil {
 		return "", firstErr

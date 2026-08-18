@@ -13,7 +13,11 @@ func TestParseIssueFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("close issue fixture: %v", err)
+		}
+	}()
 
 	issue, err := ParseIssue(file, issueURL)
 	if err != nil {
@@ -70,7 +74,11 @@ func TestParseArticleFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("close article fixture: %v", err)
+		}
+	}()
 
 	article, err := ParseArticle(file, issueURL+"лучшие-письма-читателей/")
 	if err != nil {
@@ -97,6 +105,7 @@ func TestParseArticleFixture(t *testing.T) {
 func TestParseArticleKeepsAllowedHTMLAndNormalizesURLs(t *testing.T) {
 	html := `<html><body><h1 class="entry-title">Тест</h1><div class="entry-content">
 <p>Текст <a href="/other">ссылка</a></p><h2>Подзаголовок</h2><ul><li>Пункт</li></ul>
+<p>Первая строка<br>Вторая строка</p>
 <table><tr><th>Заголовок</th></tr><tr><td>Ячейка</td></tr></table>
 <blockquote cite="/source">Цитата</blockquote><figure><img src="/image.png" alt="рисунок"><figcaption>Подпись</figcaption></figure>
 <script>alert(1)</script><form><input value="x"></form><p></p><div class="sharedaddy">Реклама</div>
@@ -108,7 +117,7 @@ func TestParseArticleKeepsAllowedHTMLAndNormalizesURLs(t *testing.T) {
 	for _, want := range []string{
 		`href="https://example.test/other"`,
 		`src="https://example.test/image.png"`,
-		"<h2>Подзаголовок</h2>", "<ul>", "<table>", "<blockquote", "<figure>", "<figcaption>",
+		"<h2>Подзаголовок</h2>", "<ul>", "<table>", "<blockquote", "<figure>", "<figcaption>", "Первая строка<br", "Вторая строка",
 	} {
 		if !strings.Contains(article.HTML, want) {
 			t.Errorf("sanitized HTML does not contain %q: %s", want, article.HTML)
