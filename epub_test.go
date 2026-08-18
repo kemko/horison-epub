@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -61,10 +60,7 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 
 	fetcher := newTestFetcher(t)
 	output := filepath.Join(t.TempDir(), "book.epub")
-	outputFile, err := os.Create(output)
-	if err != nil {
-		t.Fatal(err)
-	}
+	outputFile := createTestFile(t, output)
 	if err := BuildEPUB(issue, articles, fetcher, outputFile); err != nil {
 		_ = outputFile.Close()
 		t.Fatal(err)
@@ -228,7 +224,7 @@ func assertNCXPoints(t *testing.T, entries map[string]zipEntry, got []ncxPoint, 
 }
 
 func TestBuildEPUBRequiresEveryIssueMaterial(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(pngBytes())
 	}))

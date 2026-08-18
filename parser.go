@@ -371,12 +371,15 @@ func collectTextBefore(root, target *html.Node) string {
 			if child == target {
 				return true
 			}
-			if child.Type == html.TextNode {
+			switch {
+			case child.Type == html.TextNode:
 				b.WriteString(child.Data)
-			} else if child.Type == html.ElementNode && child.Data == "br" {
+			case child.Type == html.ElementNode && child.Data == "br":
 				b.WriteByte('\n')
-			} else if walk(child) {
-				return true
+			default:
+				if walk(child) {
+					return true
+				}
 			}
 		}
 		return false

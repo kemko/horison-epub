@@ -1,3 +1,4 @@
+// Package main provides the horizont-epub command.
 package main
 
 import (

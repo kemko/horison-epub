@@ -49,7 +49,7 @@ func TestRunValidatesArgumentsAndExistingOutput(t *testing.T) {
 	}
 
 	var requests int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		requests++
 		http.Error(w, "unexpected request", http.StatusInternalServerError)
 	}))
@@ -66,17 +66,14 @@ func TestRunValidatesArgumentsAndExistingOutput(t *testing.T) {
 	if requests != 0 {
 		t.Fatalf("requests = %d, want 0", requests)
 	}
-	content, err := os.ReadFile(output)
-	if err != nil {
-		t.Fatal(err)
-	}
+	content := readTestFile(t, output)
 	if string(content) != "keep" {
 		t.Fatalf("existing output was changed to %q", content)
 	}
 }
 
 func TestWriteEPUBDoesNotReplaceOutputCreatedBeforePublish(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(pngBytes())
 	}))
@@ -105,10 +102,7 @@ func TestWriteEPUBDoesNotReplaceOutputCreatedBeforePublish(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("publication error = %v", err)
 	}
-	content, readErr := os.ReadFile(output)
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
+	content := readTestFile(t, output)
 	if string(content) != "keep" {
 		t.Fatalf("existing output was changed to %q", content)
 	}
@@ -116,10 +110,28 @@ func TestWriteEPUBDoesNotReplaceOutputCreatedBeforePublish(t *testing.T) {
 
 func TestWriteEPUBRejectsOutputDirectoryWritableByOthers(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "shared")
-	if err := os.Mkdir(directory, 0o777); err != nil {
+	if err := os.Mkdir(directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(directory, 0o777); err != nil {
+	directoryRoot, err := os.OpenRoot(filepath.Dir(directory))
+	if err != nil {
+		t.Fatal(err)
+	}
+	directoryFile, err := directoryRoot.OpenFile(filepath.Base(directory), os.O_RDONLY, 0)
+	if err != nil {
+		_ = directoryRoot.Close()
+		t.Fatal(err)
+	}
+	if err := directoryFile.Chmod(0o777); err != nil {
+		_ = directoryFile.Close()
+		_ = directoryRoot.Close()
+		t.Fatal(err)
+	}
+	if err := directoryFile.Close(); err != nil {
+		_ = directoryRoot.Close()
+		t.Fatal(err)
+	}
+	if err := directoryRoot.Close(); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(directory)
@@ -141,6 +153,50 @@ func TestWriteEPUBRejectsOutputDirectoryWritableByOthers(t *testing.T) {
 	if len(entries) != 0 {
 		t.Fatalf("output directory contains %v", entries)
 	}
+}
+
+func createTestFile(t *testing.T, path string) *os.File {
+	t.Helper()
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := root.Close(); err != nil {
+			t.Errorf("close test file root: %v", err)
+		}
+	})
+	file, err := root.OpenFile(filepath.Base(path), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return file
+}
+
+func readTestFile(t *testing.T, path string) []byte {
+	t.Helper()
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := root.OpenFile(filepath.Base(path), os.O_RDONLY, 0)
+	if err != nil {
+		_ = root.Close()
+		t.Fatal(err)
+	}
+	content, readErr := io.ReadAll(file)
+	closeErr := file.Close()
+	rootErr := root.Close()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	if rootErr != nil {
+		t.Fatal(rootErr)
+	}
+	return content
 }
 
 func TestRunBuildsEPUBAndPrintsOutput(t *testing.T) {

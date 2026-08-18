@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/xml"
@@ -143,7 +144,7 @@ func (f *Fetcher) get(rawURL string) (*http.Response, string, error) {
 	if err != nil {
 		return nil, "", fetchError(rawURL, "invalid URL: %w", err)
 	}
-	request, err := http.NewRequest(http.MethodGet, key, nil)
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, key, nil)
 	if err != nil {
 		return nil, "", fetchError(rawURL, "create request: %w", err)
 	}
@@ -358,7 +359,7 @@ func validateSVG(body []byte) (bool, error) {
 	depth := 0
 	for {
 		token, err := decoder.Token()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			if !seenRoot {
 				return false, nil
 			}

@@ -1,1 +1,6 @@
 *.epub
+bin/
+dist/
+coverage.out
+coverage.html
+*.coverprofile

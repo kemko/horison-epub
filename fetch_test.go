@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/color"
@@ -89,7 +90,7 @@ func TestFetchHTMLRejectsInvalidSchemeAndOversize(t *testing.T) {
 		t.Fatalf("invalid scheme error = %v", err)
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		_, _ = w.Write(bytes.Repeat([]byte("x"), maxHTMLBytes+1))
 	}))
@@ -101,7 +102,7 @@ func TestFetchHTMLRejectsInvalidSchemeAndOversize(t *testing.T) {
 }
 
 func TestFetchHTMLTimeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		_, _ = w.Write([]byte("late"))
 	}))
@@ -157,7 +158,7 @@ func TestFetchImageValidatesMIMEAndExtension(t *testing.T) {
 }
 
 func TestFetchImageRejectsOversize(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(append(pngBytes(), bytes.Repeat([]byte("x"), maxImageBytes)...))
 	}))
@@ -234,7 +235,7 @@ func TestFetchImageSupportsValidFormats(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", tt.mime)
 				_, _ = w.Write(tt.body)
 			}))
@@ -263,7 +264,7 @@ func TestFetchImageRejectsCorruptRasterImages(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", tt.mime)
 				_, _ = w.Write(tt.body)
 			}))
@@ -335,7 +336,7 @@ func TestFetchImageRejectsUnsafeSVG(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "image/svg+xml")
 				_, _ = w.Write([]byte(tt.body))
 			}))
@@ -385,17 +386,18 @@ func animatedGIFBytes(frames int) []byte {
 	return buffer.Bytes()
 }
 
-func testGIFStructure(frames, width, height int) []byte {
+func testGIFStructure(frames int, width, height uint16) []byte {
 	body := []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00")
+	dimensions := make([]byte, 4)
+	binary.LittleEndian.PutUint16(dimensions[0:2], width)
+	binary.LittleEndian.PutUint16(dimensions[2:4], height)
 	for range frames {
 		body = append(body,
 			0x2c,
 			0x00, 0x00, 0x00, 0x00,
-			byte(width), byte(width>>8), byte(height), byte(height>>8),
-			0x00,
-			0x02,
-			0x00,
 		)
+		body = append(body, dimensions...)
+		body = append(body, 0x00, 0x02, 0x00)
 	}
 	return append(body, 0x3b)
 }
