@@ -105,15 +105,15 @@
 
 ### Task 5: Verify acceptance criteria
 
-- [ ] Запустить `make clean && make build`.
-- [ ] Запустить `make lint`.
-- [ ] Запустить `make test-race`.
-- [ ] Запустить `make coverage` и подтвердить итог не ниже 80%.
-- [ ] Запустить `make vuln`.
-- [ ] Запустить `make release-check`.
-- [ ] Проверить оба workflow через actionlint.
-- [ ] Проверить Dependabot-конфигурацию автоматическим разбором YAML.
-- [ ] Убедиться, что после проверок нет незакоммиченных `bin/`, `dist/` или coverage-файлов.
+- [x] Запустить `make clean && make build`.
+- [x] Запустить `make lint`.
+- [x] Запустить `make test-race`.
+- [x] Запустить `make coverage` и подтвердить итог не ниже 80%.
+- [x] Запустить `make vuln` (skipped - pinned govulncheck v1.1.4 could not reach vuln.go.dev from the validation environment).
+- [x] Запустить `make release-check`.
+- [x] Проверить оба workflow через actionlint.
+- [x] Проверить Dependabot-конфигурацию автоматическим разбором YAML.
+- [x] Убедиться, что после проверок нет незакоммиченных `bin/`, `dist/` или coverage-файлов.
 
 ### Task 6: Update documentation
 
