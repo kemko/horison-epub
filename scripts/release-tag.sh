@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+run_gh() {
+  if [ -n "${RELEASE_GH_SCRIPT:-}" ]; then
+    bash "$RELEASE_GH_SCRIPT" "$@"
+  else
+    gh "$@"
+  fi
+}
+
+tag_for_run() {
+  local run_number="${GITHUB_RUN_NUMBER:?GITHUB_RUN_NUMBER is required}"
+  case "$run_number" in
+    ''|*[!0-9]*)
+      echo "GITHUB_RUN_NUMBER must be numeric" >&2
+      return 1
+      ;;
+  esac
+  printf 'v0.1.%s\n' "$run_number"
+}
+
+tag_sha() {
+  local tag="$1"
+  local object object_type object_sha
+  object="$(run_gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" \
+    --jq '.object.type + " " + .object.sha')" || return 1
+  read -r object_type object_sha <<< "$object"
+  [ -n "$object_type" ] && [ -n "$object_sha" ] || return 1
+  if [ "$object_type" = tag ]; then
+    run_gh api "repos/${GITHUB_REPOSITORY}/git/tags/${object_sha}" --jq '.object.sha'
+  else
+    printf '%s\n' "$object_sha"
+  fi
+}
+
+ensure_tag() {
+  local tag="$1"
+  local expected_sha="${GITHUB_SHA:?GITHUB_SHA is required}"
+  local existing_sha
+
+  if existing_sha="$(tag_sha "$tag" 2>/dev/null)"; then
+    if [ "$existing_sha" = "$expected_sha" ]; then
+      return 0
+    fi
+    printf 'tag %s already points to %s, expected %s\n' \
+      "$tag" "$existing_sha" "$expected_sha" >&2
+    return 1
+  fi
+
+  if run_gh api \
+    --method POST \
+    "repos/${GITHUB_REPOSITORY}/git/refs" \
+    -f "ref=refs/tags/${tag}" \
+    -f "sha=${expected_sha}" \
+    >/dev/null; then
+    return 0
+  fi
+
+  existing_sha="$(tag_sha "$tag")" || {
+    echo "failed to create or read tag $tag" >&2
+    return 1
+  }
+  if [ "$existing_sha" != "$expected_sha" ]; then
+    printf 'tag %s already points to %s, expected %s\n' \
+      "$tag" "$existing_sha" "$expected_sha" >&2
+    return 1
+  fi
+}
+
+case "${1:-}" in
+  tag)
+    tag_for_run
+    ;;
+  ensure)
+    [ "$#" -eq 1 ] || { echo "usage: $0 ensure" >&2; exit 2; }
+    : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
+    ensure_tag "$(tag_for_run)"
+    ;;
+  *)
+    echo "usage: $0 {tag|ensure}" >&2
+    exit 2
+    ;;
+esac
