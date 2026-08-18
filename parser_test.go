@@ -130,6 +130,31 @@ func TestParseArticleKeepsAllowedHTMLAndNormalizesURLs(t *testing.T) {
 	}
 }
 
+func TestParseArticleNormalizesLazyImageURLs(t *testing.T) {
+	html := `<h1 class="entry-title">Тест</h1><div class="entry-content"><p>Текст</p>
+<img data-src="/data-src.png"><img src="" data-lazy-src="lazy.png">
+<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" data-src="/fallback.png">
+</div>`
+	article, err := ParseArticle(strings.NewReader(html), "https://example.test/issues/item/article/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`src="https://example.test/data-src.png"`,
+		`src="https://example.test/issues/item/article/lazy.png"`,
+		`src="https://example.test/fallback.png"`,
+	} {
+		if !strings.Contains(article.HTML, want) {
+			t.Errorf("sanitized HTML does not contain %q: %s", want, article.HTML)
+		}
+	}
+	for _, unwanted := range []string{"data-src=", "data-lazy-src=", "data:image"} {
+		if strings.Contains(article.HTML, unwanted) {
+			t.Errorf("sanitized HTML contains %q: %s", unwanted, article.HTML)
+		}
+	}
+}
+
 func TestParseArticleOnlyRemovesReturnBoilerplate(t *testing.T) {
 	html := `<h1 class="entry-title">Тест</h1><div class="entry-content">
 <p>Сравните с <a href="../">выпуском целиком</a>, чтобы увидеть контекст.</p>

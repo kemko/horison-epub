@@ -241,12 +241,22 @@ func normalizeContentURLs(content *goquery.Selection, base *url.URL) {
 			removeAttr(n, "href")
 		}
 	})
-	content.Find("img[src]").Each(func(_ int, selection *goquery.Selection) {
+	content.Find("img").Each(func(_ int, selection *goquery.Selection) {
 		n := firstNode(selection)
-		if resolved, err := resolveHTTPURL(attr(n, "src"), base); err == nil {
-			setAttr(n, "src", resolved.String())
-		} else {
-			removeAttr(n, "src")
+		resolvedSrc := ""
+		for _, name := range []string{"src", "data-src", "data-lazy-src"} {
+			raw := strings.TrimSpace(attr(n, name))
+			if raw == "" {
+				continue
+			}
+			if resolved, err := resolveHTTPURL(raw, base); err == nil {
+				resolvedSrc = resolved.String()
+				break
+			}
+		}
+		removeAttr(n, "src")
+		if resolvedSrc != "" {
+			setAttr(n, "src", resolvedSrc)
 		}
 	})
 }
