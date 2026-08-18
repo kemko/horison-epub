@@ -74,7 +74,7 @@ func newFetcher(allowPrivateNetworks bool) (*Fetcher, error) {
 				return fmt.Errorf("stopped after 10 redirects")
 			}
 			if _, err := parseHTTPURL(req.URL.String()); err != nil {
-				return fmt.Errorf("invalid redirect URL %q: %w", req.URL.String(), err)
+				return fmt.Errorf("invalid redirect URL %q: %w", redactURL(req.URL.String()), err)
 			}
 			return fetcher.consumeRequest()
 		},
@@ -217,17 +217,44 @@ func (f *Fetcher) consumeBytes(size int64) error {
 }
 
 func dialPublicNetwork(ctx context.Context, network, address string) (net.Conn, error) {
-	var dialer net.Dialer
-	connection, err := dialer.DialContext(ctx, network, address)
+	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
 	}
-	remote, ok := connection.RemoteAddr().(*net.TCPAddr)
-	if !ok || remote.IP == nil || !isPublicIP(remote.IP) {
-		_ = connection.Close()
-		return nil, fmt.Errorf("refusing non-public destination %q", address)
+	lookupNetwork := "ip"
+	switch network {
+	case "tcp4":
+		lookupNetwork = "ip4"
+	case "tcp6":
+		lookupNetwork = "ip6"
 	}
-	return connection, nil
+	addresses, err := net.DefaultResolver.LookupNetIP(ctx, lookupNetwork, host)
+	if err != nil {
+		return nil, err
+	}
+
+	var dialer net.Dialer
+	var dialErr error
+	for _, resolved := range addresses {
+		if !isPublicIP(resolved.AsSlice()) {
+			continue
+		}
+		connection, err := dialer.DialContext(ctx, network, net.JoinHostPort(resolved.String(), port))
+		if err != nil {
+			dialErr = errors.Join(dialErr, err)
+			continue
+		}
+		remote, ok := connection.RemoteAddr().(*net.TCPAddr)
+		if !ok || remote.IP == nil || !isPublicIP(remote.IP) {
+			_ = connection.Close()
+			continue
+		}
+		return connection, nil
+	}
+	if dialErr != nil {
+		return nil, dialErr
+	}
+	return nil, fmt.Errorf("refusing non-public destination %q", address)
 }
 
 var specialUsePrefixes = []netip.Prefix{
@@ -606,5 +633,5 @@ func validateImageExtension(rawURL string, kind imageKind) error {
 }
 
 func fetchError(rawURL, format string, args ...any) error {
-	return fmt.Errorf("fetch %s: %w", rawURL, fmt.Errorf(format, args...))
+	return fmt.Errorf("fetch %s: %w", redactURL(rawURL), fmt.Errorf(format, args...))
 }

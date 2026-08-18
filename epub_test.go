@@ -272,6 +272,7 @@ func TestBuildEPUBRejectsMissingDependenciesAndMetadata(t *testing.T) {
 		CoverURL: "https://example.test/cover.png",
 	}
 	fetcher := newTestFetcher(t)
+	credentialURL := fmt.Sprintf("https://%s:%s@example.test/issues/one/", "user", "secret")
 	tests := []struct {
 		name    string
 		issue   Issue
@@ -284,6 +285,7 @@ func TestBuildEPUBRejectsMissingDependenciesAndMetadata(t *testing.T) {
 		{name: "title", issue: Issue{URL: validIssue.URL, CoverURL: validIssue.CoverURL}, fetcher: fetcher, output: io.Discard, want: "incomplete issue metadata"},
 		{name: "URL", issue: Issue{Title: validIssue.Title, CoverURL: validIssue.CoverURL}, fetcher: fetcher, output: io.Discard, want: "incomplete issue metadata"},
 		{name: "cover", issue: Issue{Title: validIssue.Title, URL: validIssue.URL}, fetcher: fetcher, output: io.Discard, want: "incomplete issue metadata"},
+		{name: "credentials", issue: Issue{Title: validIssue.Title, URL: credentialURL, CoverURL: validIssue.CoverURL}, fetcher: fetcher, output: io.Discard, want: "userinfo is not allowed"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -9,6 +9,21 @@ import (
 
 const issueURL = "https://astra-nova.org/issues/horisont/horisont-n-82/"
 
+func TestParseHTTPURLRejectsAndRedactsCredentials(t *testing.T) {
+	const secret = "do-not-log-this"
+	rawURL := "https://user:" + secret + "@example.test/issues/demo/"
+	if _, err := parseHTTPURL(rawURL); err == nil || !strings.Contains(err.Error(), "userinfo is not allowed") {
+		t.Fatalf("parseHTTPURL error = %v", err)
+	}
+	_, err := ParseIssue(strings.NewReader(""), rawURL)
+	if err == nil {
+		t.Fatal("ParseIssue accepted URL credentials")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("ParseIssue error exposes password: %v", err)
+	}
+}
+
 func TestParseIssueFixture(t *testing.T) {
 	file, err := os.Open("testdata/issue.html")
 	if err != nil {

@@ -46,7 +46,7 @@ func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 
 	issueURL := flags.Arg(0)
 	if _, err := parseHTTPURL(issueURL); err != nil {
-		return fmt.Errorf("invalid issue URL %q: %w", issueURL, err)
+		return fmt.Errorf("invalid issue URL %q: %w", redactURL(issueURL), err)
 	}
 	outputPath, err := outputPathFor(issueURL, *output)
 	if err != nil {
@@ -128,7 +128,7 @@ func outputPathFor(issueURL, requested string) (string, error) {
 	}
 	u, err := parseHTTPURL(issueURL)
 	if err != nil {
-		return "", fmt.Errorf("invalid issue URL %q: %w", issueURL, err)
+		return "", fmt.Errorf("invalid issue URL %q: %w", redactURL(issueURL), err)
 	}
 	segment := path.Base(strings.TrimRight(u.EscapedPath(), "/"))
 	if segment == "." || segment == "/" || segment == "" {

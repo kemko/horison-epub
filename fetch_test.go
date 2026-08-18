@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -58,6 +59,54 @@ func TestFetcherRejectsPrivateNetworks(t *testing.T) {
 	_, _, err = fetcher.FetchHTML(server.URL)
 	if err == nil || !strings.Contains(err.Error(), "non-public destination") {
 		t.Fatalf("private network error = %v", err)
+	}
+}
+
+func TestDialPublicNetworkRejectsBeforeConnect(t *testing.T) {
+	ctx := context.Background()
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("close listener: %v", err)
+		}
+	})
+
+	connection, err := dialPublicNetwork(ctx, "tcp", listener.Addr().String())
+	if connection != nil {
+		_ = connection.Close()
+		t.Fatal("private connection was established")
+	}
+	if err == nil || !strings.Contains(err.Error(), "non-public destination") {
+		t.Fatalf("private network error = %v", err)
+	}
+
+	tcpListener := listener.(*net.TCPListener)
+	if err := tcpListener.SetDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	connection, err = listener.Accept()
+	if connection != nil {
+		_ = connection.Close()
+		t.Fatal("private listener accepted a connection")
+	}
+	var networkError net.Error
+	if !errors.As(err, &networkError) || !networkError.Timeout() {
+		t.Fatalf("accept error = %v, want timeout", err)
+	}
+}
+
+func TestFetcherRejectsAndRedactsURLCredentials(t *testing.T) {
+	const secret = "do-not-log-this"
+	fetcher := newTestFetcher(t)
+	_, _, err := fetcher.FetchHTML("https://user:" + secret + "@example.test/issue/")
+	if err == nil || !strings.Contains(err.Error(), "userinfo is not allowed") {
+		t.Fatalf("credential URL error = %v", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("credential URL error exposes password: %v", err)
 	}
 }
 

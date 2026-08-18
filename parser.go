@@ -35,7 +35,7 @@ type Article struct {
 func ParseIssue(r io.Reader, issueURL string) (Issue, error) {
 	base, err := parseHTTPURL(issueURL)
 	if err != nil {
-		return Issue{}, fmt.Errorf("issue: invalid URL %q: %w", issueURL, err)
+		return Issue{}, fmt.Errorf("issue: invalid URL %q: %w", redactURL(issueURL), err)
 	}
 
 	doc, err := goquery.NewDocumentFromReader(r)
@@ -75,7 +75,7 @@ func ParseIssue(r io.Reader, issueURL string) (Issue, error) {
 	}
 	coverURL, err := resolveHTTPURL(coverRaw, base)
 	if err != nil {
-		return Issue{}, fmt.Errorf("issue: invalid cover URL %q: %w", coverRaw, err)
+		return Issue{}, fmt.Errorf("issue: invalid cover URL %q: %w", redactURL(coverRaw), err)
 	}
 
 	issue := Issue{Title: title, URL: base.String(), CoverURL: coverURL.String()}
@@ -131,7 +131,7 @@ func ParseIssue(r io.Reader, issueURL string) (Issue, error) {
 func ParseArticle(r io.Reader, articleURL string) (Article, error) {
 	base, err := parseHTTPURL(articleURL)
 	if err != nil {
-		return Article{}, fmt.Errorf("article: invalid URL %q: %w", articleURL, err)
+		return Article{}, fmt.Errorf("article: invalid URL %q: %w", redactURL(articleURL), err)
 	}
 	doc, err := goquery.NewDocumentFromReader(r)
 	if err != nil {
@@ -209,7 +209,19 @@ func parseHTTPURL(raw string) (*url.URL, error) {
 	if u.Host == "" {
 		return nil, fmt.Errorf("missing host")
 	}
+	if u.User != nil {
+		return nil, fmt.Errorf("URL userinfo is not allowed")
+	}
 	return u, nil
+}
+
+func redactURL(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "<invalid URL>"
+	}
+	u.User = nil
+	return u.String()
 }
 
 func resolveHTTPURL(raw string, base *url.URL) (*url.URL, error) {
