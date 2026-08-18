@@ -9,8 +9,20 @@
 
 ## Проверка
 
+Используй Makefile как единый интерфейс локальных и CI-проверок:
+
 ```sh
-go test ./...
-go test -race ./...
-go vet ./...
+make build
+make test
+make test-race
+make lint
+make coverage
+make vuln
+make release-check
+make ci
+make clean
 ```
+
+Перед завершением изменений обязательно запускай `make build`, `make lint`,
+`make coverage`, `make vuln`, `make release-check` и итоговый `make ci`.
+Минимальный порог покрытия — 80%. Версии инструментов указаны в README.
