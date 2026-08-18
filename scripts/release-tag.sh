@@ -2,10 +2,10 @@
 set -euo pipefail
 
 tag_for_run() {
-  local run_number="${GITHUB_RUN_NUMBER:?GITHUB_RUN_NUMBER is required}"
+  local run_number="${RELEASE_RUN_NUMBER:?RELEASE_RUN_NUMBER is required}"
   case "$run_number" in
     ''|*[!0-9]*)
-      echo "GITHUB_RUN_NUMBER must be numeric" >&2
+      echo "RELEASE_RUN_NUMBER must be numeric" >&2
       return 1
       ;;
   esac

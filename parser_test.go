@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -77,6 +78,33 @@ func TestParseIssuePreservesAnnotationSpacingAcrossMarkup(t *testing.T) {
 	}
 	if got := issue.Sections[0].Articles[0].Annotation; got != "Текст с выделением дальше" {
 		t.Fatalf("annotation = %q", got)
+	}
+}
+
+func TestParseIssueDiscardsEmptySectionsAndLimitsMaterials(t *testing.T) {
+	var emptySections strings.Builder
+	for range 1_000 {
+		emptySections.WriteString("<h4>Пустой раздел</h4>")
+	}
+	html := `<h1 class="entry-title">Выпуск</h1><div class="entry-content"><img src="/cover.jpg"><h2>Содержание</h2>` +
+		emptySections.String() + `<h4>Раздел</h4><p><a href="/issues/horisont/horisont-n-82/article/">Статья</a></p></div>`
+	issue, err := ParseIssue(strings.NewReader(html), issueURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issue.Sections) != 1 || issue.Sections[0].Title != "Раздел" {
+		t.Fatalf("sections = %+v, want one non-empty section", issue.Sections)
+	}
+
+	var materials strings.Builder
+	materials.WriteString(`<h1 class="entry-title">Выпуск</h1><div class="entry-content"><img src="/cover.jpg"><h2>Содержание</h2><h4>Раздел</h4>`)
+	for index := range maxArticlesPerIssue + 1 {
+		fmt.Fprintf(&materials, `<p><a href="/issues/horisont/horisont-n-82/article-%d/">Статья</a></p>`, index)
+	}
+	materials.WriteString(`</div>`)
+	_, err = ParseIssue(strings.NewReader(materials.String()), issueURL)
+	if err == nil || !strings.Contains(err.Error(), "500-article limit") {
+		t.Fatalf("error = %v, want article limit", err)
 	}
 }
 

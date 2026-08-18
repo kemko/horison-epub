@@ -29,3 +29,7 @@ archives:
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
   algorithm: sha256
+
+release:
+  make_latest: legacy
+  replace_existing_artifacts: true

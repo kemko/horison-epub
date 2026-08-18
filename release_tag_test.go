@@ -18,7 +18,8 @@ func TestReleaseTagScriptUsesUniqueRunNumbersAndIsIdempotent(t *testing.T) {
 
 	for runNumber, want := range map[string]string{"41": "v0.1.41", "42": "v0.1.42"} {
 		if got := runReleaseTagName(t, map[string]string{
-			"GITHUB_RUN_NUMBER": runNumber,
+			"GITHUB_RUN_NUMBER":  "9001",
+			"RELEASE_RUN_NUMBER": runNumber,
 		}); got != want {
 			t.Fatalf("run number %s: got tag %q, want %q", runNumber, got, want)
 		}
@@ -32,12 +33,12 @@ func TestReleaseTagScriptUsesUniqueRunNumbersAndIsIdempotent(t *testing.T) {
 	}
 
 	env := map[string]string{
-		"GITHUB_REPOSITORY": "example/horizont-epub",
-		"GITHUB_RUN_NUMBER": "41",
-		"PATH":              mockExecutableDir + string(os.PathListSeparator) + os.Getenv("PATH"),
-		"RELEASE_SHA":       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		"MOCK_GH_SHA":       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		"MOCK_GH_STATE":     stateFile,
+		"GITHUB_REPOSITORY":  "example/horizont-epub",
+		"RELEASE_RUN_NUMBER": "41",
+		"PATH":               mockExecutableDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"RELEASE_SHA":        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MOCK_GH_SHA":        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MOCK_GH_STATE":      stateFile,
 	}
 	if err := runReleaseTagEnsure(t, env); err != nil {
 		t.Fatalf("first tag creation failed: %v", err)
@@ -143,6 +144,8 @@ func TestWorkflowsPinChecksAndReleaseOnlyAfterSuccessfulPushCI(t *testing.T) {
 		"github.event.workflow_run.event == 'push'",
 		"github.event.workflow_run.conclusion == 'success'",
 		"ref: ${{ github.event.workflow_run.head_sha }}",
+		"group: release-${{ github.event.workflow_run.id }}",
+		"RELEASE_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}",
 	} {
 		if !strings.Contains(release, want) {
 			t.Errorf("release workflow does not contain %q", want)
@@ -150,6 +153,13 @@ func TestWorkflowsPinChecksAndReleaseOnlyAfterSuccessfulPushCI(t *testing.T) {
 	}
 	if strings.Contains(release, "\nconcurrency:") {
 		t.Fatal("release workflow concurrency can discard pending releases")
+	}
+
+	goreleaser := string(readTestFile(t, ".goreleaser.yml"))
+	for _, want := range []string{"make_latest: legacy", "replace_existing_artifacts: true"} {
+		if !strings.Contains(goreleaser, want) {
+			t.Errorf("GoReleaser config does not contain %q", want)
+		}
 	}
 }
 

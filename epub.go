@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/PuerkitoBio/goquery"
 	goepub "github.com/go-shiori/go-epub"
@@ -33,6 +34,8 @@ figcaption { font-size: 0.9em; font-style: italic; }
 img { height: auto; max-width: 100%; }
 `
 
+var epubBuildMu sync.Mutex
+
 // BuildEPUB writes a complete EPUB from a parsed issue and its parsed articles.
 // Articles are matched by URL so callers may fetch and parse them sequentially.
 func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writer) error {
@@ -46,6 +49,11 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writ
 		return fmt.Errorf("epub: incomplete issue metadata")
 	}
 
+	// go-epub's storage backend is process-global. Serialize builds so its
+	// in-memory backend cannot be reset while another archive is being written.
+	epubBuildMu.Lock()
+	defer epubBuildMu.Unlock()
+
 	articleByURL := make(map[string]Article, len(articles))
 	for _, article := range articles {
 		key, _, err := canonicalURL(article.URL)
@@ -55,7 +63,7 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writ
 		articleByURL[key] = article
 	}
 
-	epubFile, err := goepub.NewEpub(issue.Title)
+	epubFile, err := newEPUB(issue.Title)
 	if err != nil {
 		return fmt.Errorf("epub: create: %w", err)
 	}
@@ -118,6 +126,13 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writ
 		return fmt.Errorf("epub: set cover: %w", err)
 	}
 	return writeEPUBArchive(epubFile, issue, coverPath, output)
+}
+
+func newEPUB(title string) (*goepub.Epub, error) {
+	if err := goepub.Use(goepub.MemoryFS); err != nil {
+		return nil, fmt.Errorf("configure in-memory storage: %w", err)
+	}
+	return goepub.NewEpub(title)
 }
 
 func writeEPUBArchive(epubFile *goepub.Epub, issue Issue, coverPath string, output io.Writer) (returnErr error) {

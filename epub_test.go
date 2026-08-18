@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	goepub "github.com/go-shiori/go-epub"
 )
 
 func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
@@ -240,6 +242,26 @@ func TestBuildEPUBRequiresEveryIssueMaterial(t *testing.T) {
 	err := BuildEPUB(issue, nil, fetcher, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "article was not fetched") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestNewEPUBDoesNotUseSharedTemporaryStorage(t *testing.T) {
+	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
+	if err := goepub.Use(goepub.OsFS); err != nil {
+		t.Fatal(err)
+	}
+
+	epubBuildMu.Lock()
+	defer epubBuildMu.Unlock()
+	epubFile, err := newEPUB("Выпуск")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := epubFile.AddSection("<p>Текст</p>", "Раздел", "section.xhtml", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := epubFile.WriteTo(io.Discard); err != nil {
+		t.Fatalf("write with unavailable OS temp storage: %v", err)
 	}
 }
 

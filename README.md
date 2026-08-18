@@ -85,7 +85,7 @@ updates не блокируются этим лимитом. В настройк
 
 После успешного CI для push в `master` release workflow требует ровно один
 соответствующий merged pull request в `master`, создаёт идемпотентный тег серии
-`v0.1.x` с patch-компонентом из `GITHUB_RUN_NUMBER`, формирует release notes из
+`v0.1.x` с patch-компонентом из номера исходного CI run, формирует release notes из
 этого PR и публикует артефакты через GoReleaser. Для прямого push release job
 завершится ошибкой, но сам push не отменится.
 

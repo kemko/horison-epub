@@ -80,34 +80,48 @@ func ParseIssue(r io.Reader, issueURL string) (Issue, error) {
 
 	issue := Issue{Title: title, URL: base.String(), CoverURL: coverURL.String()}
 	contentsSeen := false
-	content.Find("h1, h2, h3, h4, h5, h6, p").Each(func(_ int, selection *goquery.Selection) {
+	articleCount := 0
+	var currentSection Section
+	var parseErr error
+	appendCurrentSection := func() {
+		if len(currentSection.Articles) > 0 {
+			issue.Sections = append(issue.Sections, currentSection)
+		}
+		currentSection = Section{}
+	}
+	content.Find("h1, h2, h3, h4, h5, h6, p").EachWithBreak(func(_ int, selection *goquery.Selection) bool {
 		n := firstNode(selection)
 		if isContentsHeading(n) {
 			contentsSeen = true
-			return
+			return true
 		}
 		if !contentsSeen {
-			return
+			return true
 		}
 		switch n.Data {
 		case "h4":
-			issue.Sections = append(issue.Sections, Section{Title: visibleText(n)})
+			appendCurrentSection()
+			currentSection.Title = visibleText(n)
 		case "p":
-			if len(issue.Sections) == 0 {
-				return
+			if currentSection.Title == "" {
+				return true
 			}
 			article, ok := parseContentsArticle(n, base, issuePathPrefix(base))
 			if ok {
-				last := len(issue.Sections) - 1
-				issue.Sections[last].Articles = append(issue.Sections[last].Articles, article)
+				articleCount++
+				if articleCount > maxArticlesPerIssue {
+					parseErr = fmt.Errorf("issue exceeds %d-article limit", maxArticlesPerIssue)
+					return false
+				}
+				currentSection.Articles = append(currentSection.Articles, article)
 			}
 		}
+		return true
 	})
-
-	articleCount := 0
-	for _, section := range issue.Sections {
-		articleCount += len(section.Articles)
+	if parseErr != nil {
+		return Issue{}, parseErr
 	}
+	appendCurrentSection()
 	if articleCount == 0 {
 		return Issue{}, fmt.Errorf("issue: missing materials")
 	}

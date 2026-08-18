@@ -17,6 +17,9 @@ jobs:
   release:
     name: Release merged pull request
     if: github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success'
+    concurrency:
+      group: release-${{ github.event.workflow_run.id }}
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -39,6 +42,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
           RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
