@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"image"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
@@ -23,6 +24,7 @@ import (
 const (
 	maxHTMLBytes     = 16 << 20
 	maxImageBytes    = 32 << 20
+	maxImagePixels   = 40_000_000
 	defaultUserAgent = "horizont-epub/1.0"
 )
 
@@ -197,17 +199,13 @@ type imageKind struct {
 
 func detectImageKind(body []byte) (imageKind, error) {
 	var kind imageKind
-	var err error
 	switch {
 	case len(body) >= 3 && body[0] == 0xff && body[1] == 0xd8 && body[2] == 0xff:
 		kind = imageKind{mime: "image/jpeg", ext: ".jpg"}
-		_, err = jpeg.DecodeConfig(bytes.NewReader(body))
 	case bytes.HasPrefix(body, []byte("\x89PNG\r\n\x1a\n")):
 		kind = imageKind{mime: "image/png", ext: ".png"}
-		_, err = png.DecodeConfig(bytes.NewReader(body))
 	case bytes.HasPrefix(body, []byte("GIF87a")) || bytes.HasPrefix(body, []byte("GIF89a")):
 		kind = imageKind{mime: "image/gif", ext: ".gif"}
-		_, err = gif.DecodeConfig(bytes.NewReader(body))
 	default:
 		isSVG, svgErr := validateSVG(body)
 		if !isSVG {
@@ -218,10 +216,50 @@ func detectImageKind(body []byte) (imageKind, error) {
 		}
 		return imageKind{mime: "image/svg+xml", ext: ".svg"}, nil
 	}
-	if err != nil {
+	if err := validateRasterImage(body, kind); err != nil {
 		return imageKind{}, fmt.Errorf("invalid %s image: %w", kind.mime, err)
 	}
 	return kind, nil
+}
+
+func validateRasterImage(body []byte, kind imageKind) error {
+	reader := bytes.NewReader(body)
+	var config image.Config
+	var err error
+	switch kind.mime {
+	case "image/jpeg":
+		config, err = jpeg.DecodeConfig(reader)
+	case "image/png":
+		config, err = png.DecodeConfig(reader)
+	case "image/gif":
+		config, err = gif.DecodeConfig(reader)
+	default:
+		return fmt.Errorf("unsupported raster MIME %q", kind.mime)
+	}
+	if err != nil {
+		return err
+	}
+	if err := validateRasterDimensions(config); err != nil {
+		return err
+	}
+
+	reader.Reset(body)
+	switch kind.mime {
+	case "image/jpeg":
+		_, err = jpeg.Decode(reader)
+	case "image/png":
+		_, err = png.Decode(reader)
+	case "image/gif":
+		_, err = gif.DecodeAll(reader)
+	}
+	return err
+}
+
+func validateRasterDimensions(config image.Config) error {
+	if config.Width <= 0 || config.Height <= 0 || config.Width > maxImagePixels/config.Height {
+		return fmt.Errorf("dimensions %dx%d exceed %d-pixel limit", config.Width, config.Height, maxImagePixels)
+	}
+	return nil
 }
 
 func validateSVG(body []byte) (bool, error) {
@@ -325,6 +363,9 @@ func validateSVGElement(element xml.StartElement) error {
 }
 
 func validateSVGURLFunctions(value string) error {
+	if strings.Contains(value, `\`) {
+		return fmt.Errorf("CSS escapes are not allowed")
+	}
 	for lower := strings.ToLower(value); ; {
 		start := strings.Index(lower, "url(")
 		if start < 0 {

@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	stdhtml "html"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -114,8 +116,27 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath str
 	if err := epubFile.SetCover(coverPath, ""); err != nil {
 		return fmt.Errorf("epub: set cover: %w", err)
 	}
-	if err := epubFile.Write(outputPath); err != nil {
+	if err := writeEPUBFile(epubFile, outputPath); err != nil {
 		return fmt.Errorf("epub: write %q: %w", outputPath, err)
+	}
+	return nil
+}
+
+func writeEPUBFile(epubFile *goepub.Epub, outputPath string) (resultErr error) {
+	output, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := output.Close(); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("close output: %w", err))
+		}
+	}()
+	if _, err := epubFile.WriteTo(output); err != nil {
+		return err
+	}
+	if err := output.Sync(); err != nil {
+		return fmt.Errorf("sync output: %w", err)
 	}
 	return nil
 }

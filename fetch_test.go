@@ -8,6 +8,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -275,6 +276,35 @@ func TestFetchImageRejectsCorruptRasterImages(t *testing.T) {
 	}
 }
 
+func TestFetchImageRejectsTruncatedRasterImages(t *testing.T) {
+	tests := []struct {
+		name         string
+		body         []byte
+		decodeConfig func(io.Reader) (image.Config, error)
+	}{
+		{name: "JPEG", body: jpegBytes(), decodeConfig: jpeg.DecodeConfig},
+		{name: "PNG", body: pngBytes(), decodeConfig: png.DecodeConfig},
+		{name: "GIF", body: gifBytes(), decodeConfig: gif.DecodeConfig},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := tt.body[:len(tt.body)-1]
+			if _, err := tt.decodeConfig(bytes.NewReader(body)); err != nil {
+				t.Fatalf("test image metadata is invalid: %v", err)
+			}
+			if _, err := detectImageKind(body); err == nil {
+				t.Fatal("truncated image was accepted")
+			}
+		})
+	}
+}
+
+func TestRasterImagePixelLimit(t *testing.T) {
+	if err := validateRasterDimensions(image.Config{Width: maxImagePixels + 1, Height: 1}); err == nil || !strings.Contains(err.Error(), "pixel limit") {
+		t.Fatalf("pixel limit error = %v", err)
+	}
+}
+
 func TestFetchImageRejectsUnsafeSVG(t *testing.T) {
 	tests := []struct {
 		name string
@@ -284,6 +314,7 @@ func TestFetchImageRejectsUnsafeSVG(t *testing.T) {
 		{name: "event handler", body: `<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>`},
 		{name: "external image", body: `<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.test/image.png"/></svg>`},
 		{name: "external CSS URL", body: `<svg xmlns="http://www.w3.org/2000/svg"><path fill="url(https://example.test/paint.svg)"/></svg>`},
+		{name: "escaped external CSS URL", body: `<svg xmlns="http://www.w3.org/2000/svg"><path fill="u\72l(https://example.test/paint.svg)"/></svg>`},
 		{name: "stylesheet", body: `<?xml-stylesheet href="https://example.test/style.css"?><svg xmlns="http://www.w3.org/2000/svg"/>`},
 		{name: "foreign object", body: `<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/></svg>`},
 		{name: "animation", body: `<svg xmlns="http://www.w3.org/2000/svg"><animateColor/></svg>`},
