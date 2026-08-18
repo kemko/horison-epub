@@ -114,6 +114,35 @@ func TestWriteEPUBDoesNotReplaceOutputCreatedBeforePublish(t *testing.T) {
 	}
 }
 
+func TestWriteEPUBRejectsOutputDirectoryWritableByOthers(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "shared")
+	if err := os.Mkdir(directory, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(directory, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o022 == 0 {
+		t.Skip("platform does not expose writable group/other mode bits")
+	}
+
+	err = writeEPUB(Issue{}, nil, nil, filepath.Join(directory, "book.epub"), io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "writable by other users") {
+		t.Fatalf("directory permission error = %v", err)
+	}
+	entries, readErr := os.ReadDir(directory)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("output directory contains %v", entries)
+	}
+}
+
 func TestRunBuildsEPUBAndPrintsOutput(t *testing.T) {
 	server := newCLITestServer(t, false)
 	defer server.Close()

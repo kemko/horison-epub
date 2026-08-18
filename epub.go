@@ -2,10 +2,9 @@ package main
 
 import (
 	"encoding/base64"
-	"errors"
 	"fmt"
 	stdhtml "html"
-	"os"
+	"io"
 	"path/filepath"
 	"strings"
 
@@ -34,12 +33,12 @@ img { height: auto; max-width: 100%; }
 
 // BuildEPUB writes a complete EPUB from a parsed issue and its parsed articles.
 // Articles are matched by URL so callers may fetch and parse them sequentially.
-func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath string) error {
+func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writer) error {
 	if fetcher == nil {
 		return fmt.Errorf("epub: missing fetcher")
 	}
-	if strings.TrimSpace(outputPath) == "" {
-		return fmt.Errorf("epub: missing output path")
+	if output == nil {
+		return fmt.Errorf("epub: missing output")
 	}
 	if issue.Title == "" || issue.URL == "" || issue.CoverURL == "" {
 		return fmt.Errorf("epub: incomplete issue metadata")
@@ -116,27 +115,8 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath str
 	if err := epubFile.SetCover(coverPath, ""); err != nil {
 		return fmt.Errorf("epub: set cover: %w", err)
 	}
-	if err := writeEPUBFile(epubFile, outputPath); err != nil {
-		return fmt.Errorf("epub: write %q: %w", outputPath, err)
-	}
-	return nil
-}
-
-func writeEPUBFile(epubFile *goepub.Epub, outputPath string) (resultErr error) {
-	output, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := output.Close(); err != nil {
-			resultErr = errors.Join(resultErr, fmt.Errorf("close output: %w", err))
-		}
-	}()
 	if _, err := epubFile.WriteTo(output); err != nil {
-		return err
-	}
-	if err := output.Sync(); err != nil {
-		return fmt.Errorf("sync output: %w", err)
+		return fmt.Errorf("epub: write: %w", err)
 	}
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -60,7 +61,15 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 
 	fetcher := newTestFetcher(t)
 	output := filepath.Join(t.TempDir(), "book.epub")
-	if err := BuildEPUB(issue, articles, fetcher, output); err != nil {
+	outputFile, err := os.Create(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := BuildEPUB(issue, articles, fetcher, outputFile); err != nil {
+		_ = outputFile.Close()
+		t.Fatal(err)
+	}
+	if err := outputFile.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if sharedRequests.Load() != 1 {
@@ -232,7 +241,7 @@ func TestBuildEPUBRequiresEveryIssueMaterial(t *testing.T) {
 		CoverURL: server.URL + "/cover.png",
 		Sections: []Section{{Title: "Раздел", Articles: []Article{{Title: "Статья", URL: server.URL + "/issues/one/article/"}}}},
 	}
-	err := BuildEPUB(issue, nil, fetcher, filepath.Join(t.TempDir(), "book.epub"))
+	err := BuildEPUB(issue, nil, fetcher, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "article was not fetched") {
 		t.Fatalf("error = %v", err)
 	}

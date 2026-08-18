@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -126,28 +128,54 @@ func writeEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath str
 		return fmt.Errorf("resolve output %q: %w", outputPath, err)
 	}
 	outputDir := filepath.Dir(absoluteOutput)
-	temporary, err := os.CreateTemp(outputDir, ".horizont-epub-*.tmp")
+	outputName := filepath.Base(absoluteOutput)
+	outputRoot, err := os.OpenRoot(outputDir)
 	if err != nil {
-		return fmt.Errorf("create temporary output: %w", err)
-	}
-	temporaryPath := temporary.Name()
-	if err := temporary.Close(); err != nil {
-		cleanupErr := os.Remove(temporaryPath)
-		if cleanupErr != nil {
-			cleanupErr = fmt.Errorf("remove temporary output: %w", cleanupErr)
-		}
-		return errors.Join(fmt.Errorf("close temporary output: %w", err), cleanupErr)
+		return fmt.Errorf("open output directory: %w", err)
 	}
 	defer func() {
-		if err := os.Remove(temporaryPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := outputRoot.Close(); err != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("close output directory: %w", err))
+		}
+	}()
+	directory, err := outputRoot.Stat(".")
+	if err != nil {
+		return fmt.Errorf("stat output directory: %w", err)
+	}
+	if directory.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("output directory %q is writable by other users", outputDir)
+	}
+
+	temporary, temporaryName, err := createTemporaryOutput(outputRoot)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := outputRoot.Remove(temporaryName); err != nil && !errors.Is(err, os.ErrNotExist) {
 			resultErr = errors.Join(resultErr, fmt.Errorf("remove temporary output: %w", err))
 		}
 	}()
+	temporaryClosed := false
+	defer func() {
+		if !temporaryClosed {
+			if err := temporary.Close(); err != nil {
+				resultErr = errors.Join(resultErr, fmt.Errorf("close temporary output: %w", err))
+			}
+		}
+	}()
 
-	if err := BuildEPUB(issue, articles, fetcher, temporaryPath); err != nil {
+	if err := BuildEPUB(issue, articles, fetcher, temporary); err != nil {
 		return err
 	}
-	if err := os.Link(temporaryPath, absoluteOutput); err != nil {
+	if err := temporary.Sync(); err != nil {
+		return fmt.Errorf("sync temporary output: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		temporaryClosed = true
+		return fmt.Errorf("close temporary output: %w", err)
+	}
+	temporaryClosed = true
+	if err := outputRoot.Link(temporaryName, outputName); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return fmt.Errorf("output %q already exists", outputPath)
 		}
@@ -157,4 +185,22 @@ func writeEPUB(issue Issue, articles []Article, fetcher *Fetcher, outputPath str
 		return fmt.Errorf("print output path: %w", err)
 	}
 	return nil
+}
+
+func createTemporaryOutput(root *os.Root) (*os.File, string, error) {
+	for range 10 {
+		var suffix [16]byte
+		if _, err := rand.Read(suffix[:]); err != nil {
+			return nil, "", fmt.Errorf("generate temporary output name: %w", err)
+		}
+		name := ".horizont-epub-" + hex.EncodeToString(suffix[:]) + ".tmp"
+		file, err := root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil {
+			return file, name, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return nil, "", fmt.Errorf("create temporary output: %w", err)
+		}
+	}
+	return nil, "", errors.New("create temporary output: too many name collisions")
 }
