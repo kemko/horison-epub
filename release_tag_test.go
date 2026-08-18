@@ -163,6 +163,21 @@ func TestWorkflowsPinChecksAndReleaseOnlyAfterSuccessfulPushCI(t *testing.T) {
 	}
 }
 
+func TestDependabotUpdatesSHAPinnedActions(t *testing.T) {
+	config := string(readTestFile(t, ".github/dependabot.yml"))
+	gomod := strings.Index(config, "package-ecosystem: gomod")
+	actions := strings.Index(config, "package-ecosystem: github-actions")
+	if gomod < 0 || actions < 0 || gomod >= actions {
+		t.Fatal("Dependabot config does not contain both ecosystems")
+	}
+	if !strings.Contains(config[gomod:actions], "open-pull-requests-limit: 0") {
+		t.Fatal("Go module version updates are not disabled")
+	}
+	if strings.Contains(config[actions:], "open-pull-requests-limit: 0") {
+		t.Fatal("SHA-pinned GitHub Actions version updates are disabled")
+	}
+}
+
 func runReleaseTagName(t *testing.T, extraEnv map[string]string) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

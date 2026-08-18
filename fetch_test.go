@@ -124,6 +124,7 @@ func TestPublicIPRejectsSpecialUseNetworks(t *testing.T) {
 		{address: "203.0.113.1"},
 		{address: "2001:db8::1"},
 		{address: "64:ff9b:1::1"},
+		{address: "fec0::1"},
 		{address: "::ffff:127.0.0.1"},
 	}
 	for _, test := range tests {

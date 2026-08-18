@@ -4,7 +4,7 @@ Status: Completed
 
 ## Overview
 
-Добавить единые локальные команды и GitHub Actions для сборки, тестов, покрытия не ниже 80%, golangci-lint, govulncheck, Dependabot security updates и автоматического patch-релиза каждого PR, попавшего в `master`.
+Добавить единые локальные команды и GitHub Actions для сборки, тестов, покрытия не ниже 80%, golangci-lint, govulncheck, Dependabot security updates для Go-модулей, version updates для закреплённых SHA Actions и автоматического patch-релиза каждого PR, попавшего в `master`.
 
 Релизный workflow создаёт уникальный тег серии `v0.1.x`, формирует описание из данных merged PR и публикует кроссплатформенные архивы через GoReleaser.
 
@@ -54,7 +54,7 @@ Status: Completed
 - [x] Проверить отрицательный сценарий: `make coverage COVERAGE_MIN=100` должен завершиться ошибкой.
 - [x] Запустить `make ci` — все проверки должны пройти до Task 2.
 
-### Task 2: Добавить CI и Dependabot security-only
+### Task 2: Добавить CI и Dependabot updates
 
 **Files:**
 
@@ -66,8 +66,8 @@ Status: Completed
 - [x] Разнести lint, build/tests/coverage и govulncheck по параллельным jobs.
 - [x] Запускать golangci-lint с `.golangci.yml`, тесты и coverage через Makefile, govulncheck для `./...`.
 - [x] Закрепить Actions полными commit SHA и версии инструментов без `latest`.
-- [x] Настроить Dependabot для `gomod` и `github-actions`; поставить `open-pull-requests-limit: 0`, чтобы отключить обычные version-update PR, не блокируя security updates.
-- [x] Автоматически разобрать `.github/dependabot.yml` и проверить обе экосистемы, корневой каталог и нулевой лимит обычных PR.
+- [x] Настроить Dependabot security-only для `gomod` через `open-pull-requests-limit: 0`; для закреплённых SHA `github-actions` оставить еженедельные version updates, поскольку Dependabot не создаёт security alerts для SHA-ссылок.
+- [x] Автоматически проверить обе экосистемы, корневой каталог, нулевой лимит Go version updates и включённые GitHub Actions version updates.
 - [x] Проверить `.github/workflows/ci.yml` через actionlint v1.7.12.
 - [x] Запустить те же Makefile-цели, которые вызывает workflow — все проверки должны пройти до Task 3.
 
@@ -128,7 +128,7 @@ Status: Completed
 - Modify: `CLAUDE.md`
 
 - [x] Заменить разрозненные локальные команды в README на Makefile-цели; описать требуемые версии внешних инструментов и порог покрытия 80%.
-- [x] Описать CI jobs, security-only режим Dependabot, состав релизных архивов и автоматический patch-релиз после merge в `master`.
+- [x] Описать CI jobs, режимы Dependabot для Go-модулей и SHA-pinned Actions, состав релизных архивов и автоматический patch-релиз после merge в `master`.
 - [x] Зафиксировать ограничение серии `v0.1.x` и способ её явной смены.
 - [x] Обновить CLAUDE.md: агенты должны использовать `make build`, `make lint`, `make coverage`, `make vuln`, `make release-check` и итоговый `make ci`.
 - [x] Запустить все документированные команды и проверить их соответствие Makefile.

@@ -76,10 +76,12 @@ Jobs выполняются параллельно:
 - `vuln`: govulncheck для `./...`;
 - `release-check`: проверка GoReleaser и snapshot-сборка без публикации.
 
-Dependabot работает в security-only режиме для `gomod` и `github-actions`.
-Обычные version-update PR отключены (`open-pull-requests-limit: 0`), security
-updates не блокируются этим лимитом. В настройках репозитория нужно отдельно
-включить Dependabot alerts и Dependabot security updates.
+Для `gomod` Dependabot работает в security-only режиме: обычные version-update
+PR отключены (`open-pull-requests-limit: 0`), security updates этим лимитом не
+блокируются. Для закреплённых SHA GitHub Actions включены еженедельные version
+updates, поскольку Dependabot не создаёт security alerts для SHA-ссылок. В
+настройках репозитория нужно отдельно включить Dependabot alerts и security
+updates.
 
 ## Релизы
 
