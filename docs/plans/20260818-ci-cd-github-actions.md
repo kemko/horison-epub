@@ -59,15 +59,15 @@
 - Create: `.github/workflows/ci.yml`
 - Create: `.github/dependabot.yml`
 
-- [ ] Запускать CI для `pull_request` и push в `master`, отменяя только устаревшие запуски того же PR/ref.
-- [ ] Установить `permissions: contents: read`, явные `timeout-minutes` и Go `1.25.x` с кешем по `go.sum`.
-- [ ] Разнести lint, build/tests/coverage и govulncheck по параллельным jobs.
-- [ ] Запускать golangci-lint с `.golangci.yml`, тесты и coverage через Makefile, govulncheck для `./...`.
-- [ ] Закрепить Actions полными commit SHA и версии инструментов без `latest`.
-- [ ] Настроить Dependabot для `gomod` и `github-actions`; поставить `open-pull-requests-limit: 0`, чтобы отключить обычные version-update PR, не блокируя security updates.
-- [ ] Автоматически разобрать `.github/dependabot.yml` и проверить обе экосистемы, корневой каталог и нулевой лимит обычных PR.
-- [ ] Проверить `.github/workflows/ci.yml` через actionlint v1.7.12.
-- [ ] Запустить те же Makefile-цели, которые вызывает workflow — все проверки должны пройти до Task 3.
+- [x] Запускать CI для `pull_request` и push в `master`, отменяя только устаревшие запуски того же PR/ref.
+- [x] Установить `permissions: contents: read`, явные `timeout-minutes` и Go `1.25.x` с кешем по `go.sum`.
+- [x] Разнести lint, build/tests/coverage и govulncheck по параллельным jobs.
+- [x] Запускать golangci-lint с `.golangci.yml`, тесты и coverage через Makefile, govulncheck для `./...`.
+- [x] Закрепить Actions полными commit SHA и версии инструментов без `latest`.
+- [x] Настроить Dependabot для `gomod` и `github-actions`; поставить `open-pull-requests-limit: 0`, чтобы отключить обычные version-update PR, не блокируя security updates.
+- [x] Автоматически разобрать `.github/dependabot.yml` и проверить обе экосистемы, корневой каталог и нулевой лимит обычных PR.
+- [x] Проверить `.github/workflows/ci.yml` через actionlint v1.7.12.
+- [x] Запустить те же Makefile-цели, которые вызывает workflow — все проверки должны пройти до Task 3.
 
 ### Task 3: Настроить сборку релизных артефактов
 
