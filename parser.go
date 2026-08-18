@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -201,7 +202,7 @@ func parseContentsArticle(p *html.Node, base *url.URL, prefix string) (Article, 
 func parseHTTPURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
-		return nil, err
+		return nil, errors.New("malformed URL")
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return nil, fmt.Errorf("unsupported scheme %q", u.Scheme)
@@ -221,13 +222,16 @@ func redactURL(raw string) string {
 		return "<invalid URL>"
 	}
 	u.User = nil
+	u.RawQuery = ""
+	u.ForceQuery = false
+	u.Fragment = ""
 	return u.String()
 }
 
 func resolveHTTPURL(raw string, base *url.URL) (*url.URL, error) {
 	ref, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
-		return nil, err
+		return nil, errors.New("malformed URL")
 	}
 	resolved := base.ResolveReference(ref)
 	return parseHTTPURL(resolved.String())

@@ -176,7 +176,7 @@ func (f *Fetcher) get(rawURL string) (*http.Response, string, error) {
 	request.Header.Set("User-Agent", defaultUserAgent)
 	response, err := f.client.Do(request)
 	if err != nil {
-		return nil, "", fetchError(rawURL, "request: %w", err)
+		return nil, "", fetchError(rawURL, "request: %w", redactURLError(err))
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		statusErr := fmt.Errorf("unexpected HTTP status %s", response.Status)
@@ -635,4 +635,14 @@ func validateImageExtension(rawURL string, kind imageKind) error {
 
 func fetchError(rawURL, format string, args ...any) error {
 	return fmt.Errorf("fetch %s: %w", redactURL(rawURL), fmt.Errorf(format, args...))
+}
+
+func redactURLError(err error) error {
+	var requestErr *url.Error
+	if !errors.As(err, &requestErr) {
+		return err
+	}
+	redacted := *requestErr
+	redacted.URL = redactURL(requestErr.URL)
+	return &redacted
 }

@@ -321,6 +321,7 @@ func TestRunStopsOnUnavailableArticleWithoutOutput(t *testing.T) {
 }
 
 func TestRunStopsOnIssueParseErrorWithoutOutput(t *testing.T) {
+	const secret = "do-not-log-this"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/issues/demo/" {
 			_, _ = fmt.Fprint(w, `<div class="entry-content"><img src="/cover.png"><h2>Содержание</h2><h4>Блок</h4><p><a href="/issues/demo/article/">Статья</a></p></div>`)
@@ -332,9 +333,12 @@ func TestRunStopsOnIssueParseErrorWithoutOutput(t *testing.T) {
 
 	directory := t.TempDir()
 	output := filepath.Join(directory, "failed.epub")
-	err := run([]string{"-allow-private-network", "-o", output, server.URL + "/issues/demo/"}, io.Discard, io.Discard)
+	err := run([]string{"-allow-private-network", "-o", output, server.URL + "/issues/demo/?token=" + secret + "#" + secret}, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "missing title") {
 		t.Fatalf("parse error = %v", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("parse error exposes query secret: %v", err)
 	}
 	if _, err := os.Stat(output); !os.IsNotExist(err) {
 		t.Fatalf("output stat error = %v", err)

@@ -176,13 +176,17 @@ func TestFetchHTMLSuccessRedirectAndRelativeURLs(t *testing.T) {
 }
 
 func TestFetchHTMLHTTPErrorIncludesURL(t *testing.T) {
+	const secret = "do-not-log-this"
 	server := httptest.NewServer(http.NotFoundHandler())
 	defer server.Close()
 
 	fetcher := newTestFetcher(t)
-	_, _, err := fetcher.FetchHTML(server.URL + "/missing")
+	_, _, err := fetcher.FetchHTML(server.URL + "/missing?token=" + secret)
 	if err == nil || !strings.Contains(err.Error(), server.URL+"/missing") || !strings.Contains(err.Error(), "404") {
 		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("HTTP error exposes query secret: %v", err)
 	}
 }
 
@@ -204,6 +208,7 @@ func TestFetchHTMLRejectsInvalidSchemeAndOversize(t *testing.T) {
 }
 
 func TestFetchHTMLTimeout(t *testing.T) {
+	const secret = "do-not-log-this"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		_, _ = w.Write([]byte("late"))
@@ -212,9 +217,12 @@ func TestFetchHTMLTimeout(t *testing.T) {
 
 	fetcher := newTestFetcher(t)
 	fetcher.client = &http.Client{Timeout: 10 * time.Millisecond}
-	_, _, err := fetcher.FetchHTML(server.URL)
+	_, _, err := fetcher.FetchHTML(server.URL + "?token=" + secret)
 	if err == nil || !strings.Contains(err.Error(), server.URL) || !strings.Contains(strings.ToLower(err.Error()), "timeout") {
 		t.Fatalf("timeout error = %v", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("timeout error exposes query secret: %v", err)
 	}
 }
 

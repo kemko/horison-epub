@@ -72,7 +72,7 @@ func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 	}
 	issue, err := ParseIssue(bytes.NewReader(issueBody), finalIssueURL)
 	if err != nil {
-		return fmt.Errorf("parse issue %s: %w", finalIssueURL, err)
+		return fmt.Errorf("parse issue %s: %w", redactURL(finalIssueURL), err)
 	}
 
 	articleURLs, err := uniqueArticleURLs(issue)
@@ -87,7 +87,7 @@ func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 		}
 		article, err := ParseArticle(bytes.NewReader(body), finalArticleURL)
 		if err != nil {
-			return fmt.Errorf("parse article %s: %w", articleURL, err)
+			return fmt.Errorf("parse article %s: %w", redactURL(articleURL), err)
 		}
 		// Keep the issue URL as the stable lookup key; ParseArticle used the
 		// redirected URL above so relative resources resolve from the final page.

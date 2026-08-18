@@ -22,6 +22,20 @@ func TestParseHTTPURLRejectsAndRedactsCredentials(t *testing.T) {
 	if strings.Contains(err.Error(), secret) {
 		t.Fatalf("ParseIssue error exposes password: %v", err)
 	}
+
+	malformed := "https://user:" + secret + "%zz@example.test/issues/demo/"
+	_, err = ParseIssue(strings.NewReader(""), malformed)
+	if err == nil {
+		t.Fatal("ParseIssue accepted malformed URL")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("ParseIssue malformed URL error exposes password: %v", err)
+	}
+
+	redacted := redactURL("https://example.test/issues/demo/?token=" + secret + "#" + secret)
+	if strings.Contains(redacted, secret) || redacted != "https://example.test/issues/demo/" {
+		t.Fatalf("redactURL = %q", redacted)
+	}
 }
 
 func TestParseIssueFixture(t *testing.T) {
