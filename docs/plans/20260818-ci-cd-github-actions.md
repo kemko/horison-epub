@@ -78,14 +78,14 @@
 - Modify: `.github/workflows/ci.yml`
 - Modify: `.gitignore`
 
-- [ ] Настроить GoReleaser v2 для бинарника `horizont-epub` с `CGO_ENABLED=0`, `-trimpath` и компактными ldflags.
-- [ ] Собирать Linux, macOS и Windows для `amd64` и `arm64`; использовать ZIP для Windows, tar.gz для остальных платформ.
-- [ ] Формировать SHA-256 checksums и предсказуемые имена архивов без package managers, signing и иных неподтверждённых каналов публикации.
-- [ ] Добавить `make release-check`, выполняющий `goreleaser check` и snapshot-сборку без публикации.
-- [ ] Добавить проверку GoReleaser-конфигурации в CI.
-- [ ] Проверить `goreleaser check` и `goreleaser release --snapshot --clean`.
-- [ ] Проверить наличие ожидаемых архивов и checksum-файла в `dist/`, затем очистить артефакты.
-- [ ] Запустить `make ci` — все проверки должны пройти до Task 4.
+- [x] Настроить GoReleaser v2 для бинарника `horizont-epub` с `CGO_ENABLED=0`, `-trimpath` и компактными ldflags.
+- [x] Собирать Linux, macOS и Windows для `amd64` и `arm64`; использовать ZIP для Windows, tar.gz для остальных платформ.
+- [x] Формировать SHA-256 checksums и предсказуемые имена архивов без package managers, signing и иных неподтверждённых каналов публикации.
+- [x] Добавить `make release-check`, выполняющий `goreleaser check` и snapshot-сборку без публикации.
+- [x] Добавить проверку GoReleaser-конфигурации в CI.
+- [x] Проверить `goreleaser check` и `goreleaser release --snapshot --clean`.
+- [x] Проверить наличие ожидаемых архивов и checksum-файла в `dist/`, затем очистить артефакты.
+- [x] Запустить `make ci` — все проверки должны пройти до Task 4.
 
 ### Task 4: Автоматизировать patch-релиз каждого merged PR
 
