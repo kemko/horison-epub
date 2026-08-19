@@ -62,17 +62,17 @@
 
 - Modify: `DEVELOPMENT.md`
 
-- [ ] Обновить требуемую версию Go до 1.26.6.
-- [ ] Описать, что `make vuln` сканирует baseline из `go.mod`, а `VULN_GO_VERSION` позволяет диагностически проверить другую версию.
-- [ ] Зафиксировать Windows fallback на системный временный каталог и условие его удаления: исправленная cross-platform MemoryFS в новой версии `go-epub`.
-- [ ] Не менять README: поведение пользовательского CLI не изменяется.
-- [ ] Запустить `make build`.
-- [ ] Запустить `make lint`.
-- [ ] Запустить `make coverage` и подтвердить покрытие не ниже 80%.
-- [ ] Запустить `make vuln`.
-- [ ] Запустить `make release-check`.
-- [ ] Повторно запустить `actionlint .github/workflows/ci.yml .github/workflows/release.yml`.
-- [ ] Запустить итоговый `make ci`; все проверки должны пройти.
+- [x] Обновить требуемую версию Go до 1.26.6.
+- [x] Описать, что `make vuln` сканирует baseline из `go.mod`, а `VULN_GO_VERSION` позволяет диагностически проверить другую версию.
+- [x] Зафиксировать Windows fallback на системный временный каталог и условие его удаления: исправленная cross-platform MemoryFS в новой версии `go-epub`.
+- [x] Не менять README: поведение пользовательского CLI не изменяется.
+- [x] Запустить `make build`.
+- [x] Запустить `make lint`.
+- [x] Запустить `make coverage` и подтвердить покрытие не ниже 80%.
+- [x] Запустить `make vuln`.
+- [x] Запустить `make release-check`.
+- [x] Повторно запустить `actionlint .github/workflows/ci.yml .github/workflows/release.yml`.
+- [x] Запустить итоговый `make ci`; все проверки должны пройти.
 
 ## Post-Completion
 
