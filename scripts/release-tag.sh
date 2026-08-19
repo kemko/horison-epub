@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+readonly version_prefix='v0.1.'
+
 tag_for_run() {
   local tag patch max_patch=0
   while IFS= read -r tag; do
-    patch="${tag#v0.1.}"
+    patch="${tag#"$version_prefix"}"
     case "$patch" in
       ''|*[!0-9]*) continue ;;
     esac
     if [ "$patch" -gt "$max_patch" ]; then
       max_patch="$patch"
     fi
-  done < <(git tag --list 'v0.1.*')
-  printf 'v0.1.%s\n' "$((max_patch + 1))"
+  done < <(git tag --list "${version_prefix}*")
+  printf '%s%s\n' "$version_prefix" "$((max_patch + 1))"
 }
 
 tag_sha() {

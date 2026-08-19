@@ -17,15 +17,8 @@ func TestReleaseTagScriptUsesNextPatchAndIsIdempotent(t *testing.T) {
 	}
 
 	repository := t.TempDir()
-	for _, args := range [][]string{
-		{"init", repository},
-		{"-C", repository, "commit", "--allow-empty", "-m", "test"},
-		{"-C", repository, "tag", "v0.1.13"},
-		{"-C", repository, "tag", "v0.1.15"},
-		{"-C", repository, "tag", "v0.1.invalid"},
-		{"-C", repository, "tag", "v0.2.99"},
-	} {
-		// Tests pass only fixed Git commands declared above.
+	runGit := func(args ...string) {
+		// Tests pass only fixed Git commands from this test.
 		//nolint:gosec
 		command := exec.CommandContext(t.Context(), "git", args...)
 		command.Env = append(os.Environ(),
@@ -36,8 +29,23 @@ func TestReleaseTagScriptUsesNextPatchAndIsIdempotent(t *testing.T) {
 			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, output)
 		}
 	}
+	runGit("init", repository)
+	runGit("-C", repository, "commit", "--allow-empty", "-m", "test")
+	runGit("-C", repository, "tag", "v0.2.99")
 
 	output, err := runReleaseScriptInDir(t, repository, "scripts/release-tag.sh", []string{"tag"}, nil)
+	if err != nil {
+		t.Fatalf("first release tag: %v: %s", err, output)
+	}
+	if got, want := strings.TrimSpace(string(output)), "v0.1.1"; got != want {
+		t.Fatalf("first tag = %q, want %q", got, want)
+	}
+
+	for _, tag := range []string{"v0.1.13", "v0.1.15", "v0.1.invalid"} {
+		runGit("-C", repository, "tag", tag)
+	}
+
+	output, err = runReleaseScriptInDir(t, repository, "scripts/release-tag.sh", []string{"tag"}, nil)
 	if err != nil {
 		t.Fatalf("next release tag: %v: %s", err, output)
 	}
