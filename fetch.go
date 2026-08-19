@@ -50,10 +50,6 @@ type FetchedImage struct {
 	Path string
 }
 
-func NewFetcher() (*Fetcher, error) {
-	return newFetcher(false)
-}
-
 func newFetcher(allowPrivateNetworks bool) (*Fetcher, error) {
 	dir, err := os.MkdirTemp("", "horizont-epub-images-")
 	if err != nil {
@@ -227,6 +223,17 @@ func (f *Fetcher) consumeDecodedPixels(size int64) error {
 }
 
 func dialPublicNetwork(ctx context.Context, network, address string) (net.Conn, error) {
+	dialer := net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	return dialPublicNetworkWith(ctx, network, address, net.DefaultResolver.LookupNetIP, dialer.DialContext)
+}
+
+func dialPublicNetworkWith(
+	ctx context.Context,
+	network string,
+	address string,
+	lookup func(context.Context, string, string) ([]netip.Addr, error),
+	dial func(context.Context, string, string) (net.Conn, error),
+) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
@@ -238,7 +245,7 @@ func dialPublicNetwork(ctx context.Context, network, address string) (net.Conn, 
 	case "tcp6":
 		lookupNetwork = "ip6"
 	}
-	addresses, err := net.DefaultResolver.LookupNetIP(ctx, lookupNetwork, host)
+	addresses, err := lookup(ctx, lookupNetwork, host)
 	if err != nil {
 		return nil, err
 	}
@@ -253,11 +260,10 @@ func dialPublicNetwork(ctx context.Context, network, address string) (net.Conn, 
 		return nil, fmt.Errorf("refusing non-public destination %q", address)
 	}
 
-	dialer := net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
 	var dialErr error
 	for index, resolved := range publicAddresses {
 		attemptContext, cancel := dialAttemptContext(ctx, len(publicAddresses)-index)
-		connection, err := dialer.DialContext(attemptContext, network, net.JoinHostPort(resolved.String(), port))
+		connection, err := dial(attemptContext, network, net.JoinHostPort(resolved.String(), port))
 		cancel()
 		if err != nil {
 			dialErr = errors.Join(dialErr, err)
@@ -351,10 +357,6 @@ type imageKind struct {
 	ext  string
 }
 
-func detectImageKind(body []byte) (imageKind, error) {
-	return detectImageKindWithPixelBudget(body, nil)
-}
-
 func detectImageKindWithPixelBudget(body []byte, consumePixels func(int64) error) (imageKind, error) {
 	var kind imageKind
 	switch {
@@ -422,11 +424,6 @@ func validateRasterImage(body []byte, kind imageKind, consumePixels func(int64) 
 	case "image/gif":
 		_, err = gif.DecodeAll(reader)
 	}
-	return err
-}
-
-func validateGIFFrames(body []byte) error {
-	_, err := gifFramePixels(body)
 	return err
 }
 
@@ -601,6 +598,11 @@ func validateSVGElement(element xml.StartElement) error {
 	}
 
 	for _, attribute := range element.Attr {
+		switch attribute.Name.Space {
+		case "", svgNamespace, "http://www.w3.org/XML/1998/namespace", "http://www.w3.org/1999/xlink", "xmlns":
+		default:
+			return fmt.Errorf("attribute %q uses a foreign namespace", attribute.Name.Local)
+		}
 		name := strings.ToLower(attribute.Name.Local)
 		switch {
 		case strings.HasPrefix(name, "on"):

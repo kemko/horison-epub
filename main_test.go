@@ -30,9 +30,14 @@ func TestOutputPathFor(t *testing.T) {
 		t.Fatalf("explicit output = %q", got)
 	}
 
-	for _, issueURL := range []string{"https://example.test/", "https://example.test/issues/%2F/"} {
+	for _, issueURL := range []string{"https://example.test/", "https://example.test/issues/%2F/", "https://example.test/issues/book%0Aname/"} {
 		if _, err := outputPathFor(issueURL, ""); err == nil {
 			t.Errorf("outputPathFor(%q) accepted unsafe default", issueURL)
+		}
+	}
+	for _, requested := range []string{"book\nname.epub", "book\rname.epub"} {
+		if _, err := outputPathFor("https://example.test/issues/book/", requested); err == nil {
+			t.Errorf("outputPathFor accepted unsafe explicit path %q", requested)
 		}
 	}
 }

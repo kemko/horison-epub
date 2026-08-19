@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,7 +48,7 @@ func TestFetcherRejectsPrivateNetworks(t *testing.T) {
 	}))
 	defer server.Close()
 
-	fetcher, err := NewFetcher()
+	fetcher, err := newFetcher(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +97,53 @@ func TestDialPublicNetworkRejectsBeforeConnect(t *testing.T) {
 	if !errors.As(err, &networkError) || !networkError.Timeout() {
 		t.Fatalf("accept error = %v, want timeout", err)
 	}
+}
+
+func TestDialPublicNetworkConnectsToResolvedPublicAddress(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		addresses []netip.Addr
+	}{
+		{name: "public only", addresses: []netip.Addr{netip.MustParseAddr("8.8.8.8")}},
+		{name: "mixed", addresses: []netip.Addr{netip.MustParseAddr("10.0.0.1"), netip.MustParseAddr("8.8.8.8")}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			lookup := func(_ context.Context, network, host string) ([]netip.Addr, error) {
+				if network != "ip" || host != "example.test" {
+					t.Fatalf("lookup = %q %q", network, host)
+				}
+				return test.addresses, nil
+			}
+			peer, remote := net.Pipe()
+			t.Cleanup(func() { _ = remote.Close() })
+			dial := func(_ context.Context, network, address string) (net.Conn, error) {
+				if network != "tcp" || address != "8.8.8.8:443" {
+					t.Fatalf("dial = %q %q", network, address)
+				}
+				return &remoteAddressConn{
+					Conn: peer,
+					addr: &net.TCPAddr{IP: net.ParseIP("8.8.8.8"), Port: 443},
+				}, nil
+			}
+
+			connection, err := dialPublicNetworkWith(context.Background(), "tcp", "example.test:443", lookup, dial)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := connection.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+type remoteAddressConn struct {
+	net.Conn
+	addr net.Addr
+}
+
+func (c *remoteAddressConn) RemoteAddr() net.Addr {
+	return c.addr
 }
 
 func TestDialAttemptContextSharesParentDeadline(t *testing.T) {
@@ -451,7 +499,7 @@ func TestFetchImageRejectsTruncatedRasterImages(t *testing.T) {
 			if _, err := tt.decodeConfig(bytes.NewReader(body)); err != nil {
 				t.Fatalf("test image metadata is invalid: %v", err)
 			}
-			if _, err := detectImageKind(body); err == nil {
+			if _, err := detectImageKindWithPixelBudget(body, nil); err == nil {
 				t.Fatal("truncated image was accepted")
 			}
 		})
@@ -465,13 +513,13 @@ func TestRasterImagePixelLimit(t *testing.T) {
 }
 
 func TestGIFFrameLimits(t *testing.T) {
-	if _, err := detectImageKind(animatedGIFBytes(2)); err != nil {
+	if _, err := detectImageKindWithPixelBudget(animatedGIFBytes(2), nil); err != nil {
 		t.Fatalf("valid animated GIF: %v", err)
 	}
-	if err := validateGIFFrames(testGIFStructure(maxGIFFrames+1, 1, 1)); err == nil || !strings.Contains(err.Error(), "frame limit") {
+	if _, err := gifFramePixels(testGIFStructure(maxGIFFrames+1, 1, 1)); err == nil || !strings.Contains(err.Error(), "frame limit") {
 		t.Fatalf("frame limit error = %v", err)
 	}
-	if err := validateGIFFrames(testGIFStructure(2, 5_000, 5_000)); err == nil || !strings.Contains(err.Error(), "pixel limit") {
+	if _, err := gifFramePixels(testGIFStructure(2, 5_000, 5_000)); err == nil || !strings.Contains(err.Error(), "pixel limit") {
 		t.Fatalf("pixel limit error = %v", err)
 	}
 }
@@ -483,6 +531,7 @@ func TestFetchImageRejectsUnsafeSVG(t *testing.T) {
 	}{
 		{name: "script", body: `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`},
 		{name: "SVG Tiny handler", body: `<svg xmlns="http://www.w3.org/2000/svg" xmlns:ev="http://www.w3.org/2001/xml-events"><rect><handler type="application/ecmascript" ev:event="click">alert(1)</handler></rect></svg>`},
+		{name: "XML Events attribute", body: `<svg xmlns="http://www.w3.org/2000/svg" xmlns:ev="http://www.w3.org/2001/xml-events"><rect ev:event="click" ev:handler="https://example.test/handler.xml#x"/></svg>`},
 		{name: "event handler", body: `<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>`},
 		{name: "external image", body: `<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.test/image.png"/></svg>`},
 		{name: "external CSS URL", body: `<svg xmlns="http://www.w3.org/2000/svg"><path fill="url(https://example.test/paint.svg)"/></svg>`},

@@ -38,8 +38,10 @@ func writeValidatedEPUB(source io.ReaderAt, size int64, output io.Writer, issue 
 	writer := zip.NewWriter(output)
 	for _, file := range archive.File {
 		header := &zip.FileHeader{Name: file.Name, Method: file.Method}
-		header.SetMode(file.Mode())
-		header.Modified = file.Modified
+		if file.Name != "mimetype" {
+			header.SetMode(file.Mode())
+			header.Modified = file.Modified
+		}
 		destination, err := writer.CreateHeader(header)
 		if err != nil {
 			return errors.Join(fmt.Errorf("create ZIP entry %q: %w", file.Name, err), writer.Close())
@@ -215,7 +217,7 @@ func renderEPUBNCX(issue Issue) []byte {
 	builder.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
 	builder.WriteString(`<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="`)
 	builder.WriteString(stdhtml.EscapeString(issue.URL))
-	builder.WriteString(`"></meta><meta name="dtb:depth" content="2"></meta></head><docTitle><text>`)
+	builder.WriteString(`"></meta><meta name="dtb:depth" content="2"></meta><meta name="dtb:totalPageCount" content="0"></meta><meta name="dtb:maxPageNumber" content="0"></meta></head><docTitle><text>`)
 	builder.WriteString(stdhtml.EscapeString(issue.Title))
 	builder.WriteString("</text></docTitle><docAuthor><text></text></docAuthor><navMap>")
 	index := 0
@@ -227,7 +229,7 @@ func renderEPUBNCX(issue Issue) []byte {
 func writeEPUBNCXPoints(builder *strings.Builder, entries []epubNavigationEntry, index *int) {
 	for _, entry := range entries {
 		*index++
-		fmt.Fprintf(builder, `<navPoint id="navPoint-%d"><navLabel><text>%s</text></navLabel><content src="%s"></content>`, *index, stdhtml.EscapeString(entry.title), entry.href)
+		fmt.Fprintf(builder, `<navPoint id="navPoint-%d" playOrder="%d"><navLabel><text>%s</text></navLabel><content src="%s"></content>`, *index, *index, stdhtml.EscapeString(entry.title), entry.href)
 		writeEPUBNCXPoints(builder, entry.children, index)
 		builder.WriteString("</navPoint>")
 	}

@@ -99,6 +99,22 @@ func TestParseIssueFixture(t *testing.T) {
 	}
 }
 
+func TestParseIssueUsesLazyLoadedCoverURL(t *testing.T) {
+	for _, image := range []string{
+		`<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" data-src="/cover.jpg">`,
+		`<img data-lazy-src="/cover.jpg">`,
+	} {
+		html := `<h1 class="entry-title">Выпуск</h1><div class="entry-content">` + image + `<h2>Содержание</h2><h4>Раздел</h4><p><a href="/issues/horisont/horisont-n-82/article/">Статья</a></p></div>`
+		issue, err := ParseIssue(strings.NewReader(html), issueURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if issue.CoverURL != "https://astra-nova.org/cover.jpg" {
+			t.Fatalf("cover URL = %q", issue.CoverURL)
+		}
+	}
+}
+
 func TestParseIssuePreservesAnnotationSpacingAcrossMarkup(t *testing.T) {
 	html := `<h1 class="entry-title">Выпуск</h1><div class="entry-content"><img src="/cover.jpg"><h2>Содержание</h2><h4>Раздел</h4><p>Автор. <a href="/issues/horisont/horisont-n-82/article/">Статья</a><br>Текст <em>с выделением</em> дальше</p></div>`
 	issue, err := ParseIssue(strings.NewReader(html), issueURL)
@@ -250,6 +266,7 @@ func TestParseErrors(t *testing.T) {
 		{name: "cover", html: `<h1 class="entry-title">Выпуск</h1><div class="entry-content"><h2>Содержание</h2><h4>Раздел</h4><p><a href="/issues/item/article/">Статья</a></p></div>`, want: "missing cover"},
 		{name: "contents", html: `<h1 class="entry-title">Выпуск</h1><div class="entry-content"><img src="/cover.jpg"><h4>Раздел</h4><p><a href="/issues/item/article/">Статья</a></p></div>`, want: "missing contents heading"},
 		{name: "materials", html: `<h1 class="entry-title">Выпуск</h1><div class="entry-content"><img src="/cover.jpg"><h2>Содержание</h2><h4>Раздел</h4><p>Нет ссылок</p></div>`, want: "missing materials"},
+		{name: "titleless material", html: `<h1 class="entry-title">Выпуск</h1><div class="entry-content"><img src="/cover.jpg"><h2>Содержание</h2><h4>Раздел</h4><p><a href="/issues/item/article/"><img src="/article.jpg"></a></p></div>`, want: "missing materials"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

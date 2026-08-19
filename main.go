@@ -134,6 +134,9 @@ func uniqueArticleURLs(issue Issue) ([]string, error) {
 
 func outputPathFor(issueURL, requested string) (string, error) {
 	if strings.TrimSpace(requested) != "" {
+		if strings.ContainsAny(requested, "\r\n") {
+			return "", errors.New("output path must not contain line breaks")
+		}
 		return requested, nil
 	}
 	u, err := parseHTTPURL(issueURL)
@@ -145,7 +148,7 @@ func outputPathFor(issueURL, requested string) (string, error) {
 		return "", errors.New("cannot derive output filename from issue URL")
 	}
 	name, err := url.PathUnescape(segment)
-	if err != nil || name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+	if err != nil || name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\\r\n") {
 		return "", errors.New("cannot derive safe output filename from issue URL")
 	}
 	return name + ".epub", nil

@@ -54,16 +54,27 @@ func ParseIssue(r io.Reader, issueURL string) (Issue, error) {
 
 	var contentsHeading *html.Node
 	var coverRaw string
+	var coverURL *url.URL
 	content.Find("img, h1, h2, h3, h4, h5, h6").EachWithBreak(func(_ int, selection *goquery.Selection) bool {
 		n := firstNode(selection)
 		if isContentsHeading(n) {
 			contentsHeading = n
 			return false
 		}
-		if n.Data == "img" && coverRaw == "" {
-			coverRaw = attr(n, "src")
-			if coverRaw == "" {
-				coverRaw = attr(n, "data-src")
+		if n.Data == "img" && coverURL == nil {
+			for _, name := range []string{"src", "data-src", "data-lazy-src"} {
+				candidateRaw := attr(n, name)
+				if strings.TrimSpace(candidateRaw) == "" {
+					continue
+				}
+				if coverRaw == "" {
+					coverRaw = candidateRaw
+				}
+				candidate, err := resolveHTTPURL(candidateRaw, base)
+				if err == nil {
+					coverURL = candidate
+					break
+				}
 			}
 		}
 		return true
@@ -74,9 +85,8 @@ func ParseIssue(r io.Reader, issueURL string) (Issue, error) {
 	if strings.TrimSpace(coverRaw) == "" {
 		return Issue{}, fmt.Errorf("issue: missing cover")
 	}
-	coverURL, err := resolveHTTPURL(coverRaw, base)
-	if err != nil {
-		return Issue{}, fmt.Errorf("issue: invalid cover URL %q: %w", redactURL(coverRaw), err)
+	if coverURL == nil {
+		return Issue{}, fmt.Errorf("issue: invalid cover URL %q", redactURL(coverRaw))
 	}
 
 	issue := Issue{Title: title, URL: base.String(), CoverURL: coverURL.String()}
@@ -184,6 +194,10 @@ func parseContentsArticle(p *html.Node, base *url.URL, prefix string) (Article, 
 		return Article{}, false
 	}
 
+	title := visibleText(link)
+	if title == "" {
+		return Article{}, false
+	}
 	author := strings.TrimSpace(collectTextBefore(p, link))
 	author = normalizeWhitespace(author)
 	author = strings.TrimSuffix(author, ".")
@@ -192,7 +206,7 @@ func parseContentsArticle(p *html.Node, base *url.URL, prefix string) (Article, 
 		annotation = normalizeWhitespace(collectTextAfter(p, br.Nodes[0]))
 	}
 	return Article{
-		Title:      visibleText(link),
+		Title:      title,
 		URL:        articleURL.String(),
 		Author:     author,
 		Annotation: annotation,

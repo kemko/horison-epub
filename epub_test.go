@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -82,6 +83,9 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 	if entries["mimetype"].method != zip.Store {
 		t.Fatal("mimetype must be stored without compression")
 	}
+	if len(entries["mimetype"].extra) != 0 {
+		t.Fatal("mimetype must not contain a ZIP extra field")
+	}
 	for _, name := range []string{"META-INF/container.xml", "EPUB/package.opf", "EPUB/nav.xhtml", "EPUB/toc.ncx", "EPUB/css/horizont.css", "EPUB/css/cover.css", "EPUB/xhtml/cover.xhtml", "EPUB/xhtml/contents.xhtml", "EPUB/xhtml/article-001-001.xhtml", "EPUB/xhtml/article-002-001.xhtml", "EPUB/images/cover.png", "EPUB/images/image-001.png"} {
 		if _, ok := entries[name]; !ok {
 			t.Errorf("missing archive entry %q", name)
@@ -140,6 +144,60 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 	}
 }
 
+func TestBuildEPUBSerializesConcurrentBuilds(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes())
+	}))
+	defer server.Close()
+
+	outputs := []*bytes.Buffer{{}, {}}
+	fetchers := []*Fetcher{newTestFetcher(t), newTestFetcher(t)}
+	errs := make([]error, len(outputs))
+	var builds sync.WaitGroup
+	for index := range outputs {
+		builds.Add(1)
+		go func() {
+			defer builds.Done()
+			title := fmt.Sprintf("Выпуск %d", index+1)
+			articleURL := fmt.Sprintf("%s/issues/%d/article/", server.URL, index+1)
+			issue := Issue{
+				Title:    title,
+				URL:      fmt.Sprintf("%s/issues/%d/", server.URL, index+1),
+				CoverURL: server.URL + "/cover.png",
+				Sections: []Section{{Title: "Раздел", Articles: []Article{{Title: title, URL: articleURL}}}},
+			}
+			articles := []Article{{Title: title, URL: articleURL, HTML: "<p>Текст.</p>"}}
+			errs[index] = BuildEPUB(issue, articles, fetchers[index], outputs[index])
+		}()
+	}
+	builds.Wait()
+
+	for index, buildErr := range errs {
+		if buildErr != nil {
+			t.Fatalf("build %d: %v", index+1, buildErr)
+		}
+		archive, err := zip.NewReader(bytes.NewReader(outputs[index].Bytes()), int64(outputs[index].Len()))
+		if err != nil {
+			t.Fatalf("open build %d: %v", index+1, err)
+		}
+		var packageFile *zip.File
+		for _, file := range archive.File {
+			if file.Name == "EPUB/package.opf" {
+				packageFile = file
+				break
+			}
+		}
+		packageData, err := readEPUBEntry(packageFile)
+		if err != nil {
+			t.Fatalf("read build %d package: %v", index+1, err)
+		}
+		if want := fmt.Sprintf("Выпуск %d", index+1); !strings.Contains(string(packageData), want) {
+			t.Fatalf("build %d package does not contain %q", index+1, want)
+		}
+	}
+}
+
 func TestBuildEPUBRedactsImageURLInErrors(t *testing.T) {
 	const secret = "do-not-log-this"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -194,8 +252,9 @@ type navItem struct {
 }
 
 type ncxPoint struct {
-	Text    string `xml:"navLabel>text"`
-	Content struct {
+	Text      string `xml:"navLabel>text"`
+	PlayOrder int    `xml:"playOrder,attr"`
+	Content   struct {
 		Src string `xml:"src,attr"`
 	} `xml:"content"`
 	Children []ncxPoint `xml:"navPoint"`
@@ -222,12 +281,26 @@ func assertNestedNavigation(t *testing.T, entries map[string]zipEntry) {
 	assertNavItems(t, entries, nav.Body.Nav.Items, want)
 
 	var ncx struct {
+		Metadata []struct {
+			Name    string `xml:"name,attr"`
+			Content string `xml:"content,attr"`
+		} `xml:"head>meta"`
 		Points []ncxPoint `xml:"navMap>navPoint"`
 	}
 	if err := xml.Unmarshal(entries["EPUB/toc.ncx"].body, &ncx); err != nil {
 		t.Fatal(err)
 	}
-	assertNCXPoints(t, entries, ncx.Points, want)
+	metadata := make(map[string]string, len(ncx.Metadata))
+	for _, item := range ncx.Metadata {
+		metadata[item.Name] = item.Content
+	}
+	for _, name := range []string{"dtb:totalPageCount", "dtb:maxPageNumber"} {
+		if metadata[name] != "0" {
+			t.Errorf("NCX metadata %q = %q, want 0", name, metadata[name])
+		}
+	}
+	playOrder := 1
+	assertNCXPoints(t, entries, ncx.Points, want, &playOrder)
 }
 
 func assertNavItems(t *testing.T, entries map[string]zipEntry, got []navItem, want []navigationWant) {
@@ -246,7 +319,7 @@ func assertNavItems(t *testing.T, entries map[string]zipEntry, got []navItem, wa
 	}
 }
 
-func assertNCXPoints(t *testing.T, entries map[string]zipEntry, got []ncxPoint, want []navigationWant) {
+func assertNCXPoints(t *testing.T, entries map[string]zipEntry, got []ncxPoint, want []navigationWant, playOrder *int) {
 	t.Helper()
 	if len(got) != len(want) {
 		t.Fatalf("NCX points = %d, want %d", len(got), len(want))
@@ -255,10 +328,14 @@ func assertNCXPoints(t *testing.T, entries map[string]zipEntry, got []ncxPoint, 
 		if got[i].Text != want[i].title || got[i].Content.Src != want[i].href {
 			t.Errorf("NCX point %d = %q %q, want %q %q", i, got[i].Text, got[i].Content.Src, want[i].title, want[i].href)
 		}
+		if got[i].PlayOrder != *playOrder {
+			t.Errorf("NCX point %d playOrder = %d, want %d", i, got[i].PlayOrder, *playOrder)
+		}
+		*playOrder++
 		if _, ok := entries["EPUB/"+got[i].Content.Src]; !ok {
 			t.Errorf("NCX src %q does not resolve", got[i].Content.Src)
 		}
-		assertNCXPoints(t, entries, got[i].Children, want[i].children)
+		assertNCXPoints(t, entries, got[i].Children, want[i].children, playOrder)
 	}
 }
 
@@ -334,23 +411,114 @@ func TestBuildEPUBRejectsMissingDependenciesAndMetadata(t *testing.T) {
 	}
 }
 
-func TestValidateEPUBArchiveRejectsMissingSection(t *testing.T) {
+func TestValidateEPUBArchiveRejectsInvalidArchives(t *testing.T) {
+	expected := map[string]struct{}{
+		"mimetype":                 {},
+		"EPUB/package.opf":         {},
+		"EPUB/xhtml/article.xhtml": {},
+	}
+	validManifest := `<package><manifest><item href="xhtml/article.xhtml"></item></manifest></package>`
+	validEntries := func() []archiveTestEntry {
+		return []archiveTestEntry{
+			{name: "mimetype", body: "application/epub+zip", method: zip.Store},
+			{name: "EPUB/package.opf", body: validManifest, method: zip.Deflate},
+			{name: "EPUB/xhtml/article.xhtml", body: `<html></html>`, method: zip.Deflate},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		entries []archiveTestEntry
+		mutate  func(*zip.Reader)
+		want    string
+	}{
+		{
+			name: "mimetype order",
+			entries: []archiveTestEntry{
+				{name: "EPUB/package.opf", body: validManifest, method: zip.Deflate},
+				{name: "mimetype", body: "application/epub+zip", method: zip.Store},
+				{name: "EPUB/xhtml/article.xhtml", body: `<html></html>`, method: zip.Deflate},
+			},
+			want: "mimetype must be the first",
+		},
+		{name: "unsafe name", entries: append(validEntries(), archiveTestEntry{name: "../escape", body: "x", method: zip.Deflate}), want: "unsafe ZIP entry"},
+		{name: "duplicate", entries: append(validEntries(), archiveTestEntry{name: "EPUB/xhtml/article.xhtml", body: "x", method: zip.Deflate}), want: "duplicate ZIP entry"},
+		{
+			name:    "oversized entry",
+			entries: validEntries(),
+			mutate: func(archive *zip.Reader) {
+				archive.File = append(archive.File, &zip.File{FileHeader: zip.FileHeader{Name: "large", UncompressedSize64: maxEPUBEntryBytes + 1}})
+			},
+			want: "exceeds size limit",
+		},
+		{
+			name: "invalid mimetype",
+			entries: []archiveTestEntry{
+				{name: "mimetype", body: "text/plain", method: zip.Store},
+				{name: "EPUB/package.opf", body: validManifest, method: zip.Deflate},
+				{name: "EPUB/xhtml/article.xhtml", body: `<html></html>`, method: zip.Deflate},
+			},
+			want: "invalid EPUB mimetype",
+		},
+		{
+			name: "malformed manifest",
+			entries: []archiveTestEntry{
+				{name: "mimetype", body: "application/epub+zip", method: zip.Store},
+				{name: "EPUB/package.opf", body: `<package>`, method: zip.Deflate},
+				{name: "EPUB/xhtml/article.xhtml", body: `<html></html>`, method: zip.Deflate},
+			},
+			want: "parse package manifest",
+		},
+		{
+			name: "unresolved manifest href",
+			entries: []archiveTestEntry{
+				{name: "mimetype", body: "application/epub+zip", method: zip.Store},
+				{name: "EPUB/package.opf", body: `<package><manifest><item href="xhtml/missing.xhtml"></item></manifest></package>`, method: zip.Deflate},
+				{name: "EPUB/xhtml/article.xhtml", body: `<html></html>`, method: zip.Deflate},
+			},
+			want: "does not resolve",
+		},
+		{
+			name: "missing expected entry",
+			entries: []archiveTestEntry{
+				{name: "mimetype", body: "application/epub+zip", method: zip.Store},
+				{name: "EPUB/package.opf", body: `<package><manifest></manifest></package>`, method: zip.Deflate},
+			},
+			want: "missing ZIP entry",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			archive := newTestEPUBArchive(t, test.entries)
+			if test.mutate != nil {
+				test.mutate(archive)
+			}
+			err := validateEPUBArchive(archive, expected)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+type archiveTestEntry struct {
+	name   string
+	body   string
+	method uint16
+}
+
+func newTestEPUBArchive(t *testing.T, entries []archiveTestEntry) *zip.Reader {
+	t.Helper()
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
-	header := &zip.FileHeader{Name: "mimetype", Method: zip.Store}
-	mimetype, err := writer.CreateHeader(header)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := mimetype.Write([]byte("application/epub+zip")); err != nil {
-		t.Fatal(err)
-	}
-	packageFile, err := writer.Create("EPUB/package.opf")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := packageFile.Write([]byte(`<package><manifest><item href="xhtml/article-001-001.xhtml"></item></manifest></package>`)); err != nil {
-		t.Fatal(err)
+	for _, entry := range entries {
+		destination, err := writer.CreateHeader(&zip.FileHeader{Name: entry.name, Method: entry.method})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := destination.Write([]byte(entry.body)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
@@ -359,19 +527,13 @@ func TestValidateEPUBArchiveRejectsMissingSection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = validateEPUBArchive(archive, map[string]struct{}{
-		"mimetype":                         {},
-		"EPUB/package.opf":                 {},
-		"EPUB/xhtml/article-001-001.xhtml": {},
-	})
-	if err == nil || !strings.Contains(err.Error(), "article-001-001.xhtml") {
-		t.Fatalf("error = %v", err)
-	}
+	return archive
 }
 
 type zipEntry struct {
 	body   []byte
 	method uint16
+	extra  []byte
 }
 
 func readZipEntries(t *testing.T, path string) map[string]zipEntry {
@@ -400,7 +562,7 @@ func readZipEntries(t *testing.T, path string) map[string]zipEntry {
 		if closeErr != nil {
 			t.Fatal(closeErr)
 		}
-		entries[file.Name] = zipEntry{body: body, method: file.Method}
+		entries[file.Name] = zipEntry{body: body, method: file.Method, extra: file.Extra}
 	}
 	return entries
 }
