@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"image/png"
 	"io"
@@ -58,7 +59,7 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 	}
 	sharedURL := server.URL + "/shared.png"
 	articles := []Article{
-		parseTestArticle(t, "Первая статья", issueURL+"first/", fmt.Sprintf(`<p>Полный текст первой статьи.</p><figure><img src="%s" srcset="ignored 2x" sizes="100vw" data-wp-image="1" alt="Иллюстрация"><figcaption>Подпись к иллюстрации</figcaption></figure><script>удалить</script>`, sharedURL)),
+		parseTestArticle(t, "Первая статья", issueURL+"first/", fmt.Sprintf("<p>Полный текст первой статьи.\x01</p><figure><img src=\"%s\" srcset=\"ignored 2x\" sizes=\"100vw\" data-wp-image=\"1\" alt=\"Иллюстрация\"><figcaption>Подпись к иллюстрации</figcaption></figure><script>удалить</script>", sharedURL)),
 		parseTestArticle(t, "Вторая статья", issueURL+"second/", fmt.Sprintf(`<h2>Заголовок</h2><p>Полный текст второй статьи.</p><p><img src="%s" alt="Повтор"></p>`, sharedURL)),
 	}
 
@@ -91,6 +92,7 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 			t.Errorf("missing archive entry %q", name)
 		}
 	}
+	assertEPUBXMLValid(t, entries)
 	imageCount := 0
 	for name := range entries {
 		if strings.HasPrefix(name, "EPUB/images/") && name != "EPUB/images/cover.png" {
@@ -140,6 +142,24 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 	for _, unwanted := range []string{"srcset", "sizes", "data-wp-image", "<script", "удалить", sharedURL} {
 		if strings.Contains(article, unwanted) {
 			t.Errorf("article XHTML contains removed value %q", unwanted)
+		}
+	}
+}
+
+func assertEPUBXMLValid(t *testing.T, entries map[string]zipEntry) {
+	t.Helper()
+	for name, entry := range entries {
+		extension := filepath.Ext(name)
+		if extension != ".xml" && extension != ".opf" && extension != ".xhtml" && extension != ".ncx" {
+			continue
+		}
+		decoder := xml.NewDecoder(bytes.NewReader(entry.body))
+		for {
+			if _, err := decoder.Token(); errors.Is(err, io.EOF) {
+				break
+			} else if err != nil {
+				t.Fatalf("%s is not valid XML: %v", name, err)
+			}
 		}
 	}
 }

@@ -53,6 +53,7 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writ
 		return fmt.Errorf("epub: invalid issue URL: %w", err)
 	}
 	issue.URL = redactURL(issueURL)
+	issue = cleanEPUBIssue(issue)
 
 	// go-epub's storage backend is process-global. Serialize builds so its
 	// in-memory backend cannot be reset while another archive is being written.
@@ -65,7 +66,7 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writ
 		if err != nil {
 			return fmt.Errorf("epub: article %q: invalid URL: %w", redactURL(article.URL), err)
 		}
-		articleByURL[key] = article
+		articleByURL[key] = cleanEPUBArticle(article)
 	}
 
 	epubFile, err := newEPUB(issue.Title)
@@ -131,6 +132,37 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writ
 		return fmt.Errorf("epub: set cover: %w", err)
 	}
 	return writeEPUBArchive(epubFile, issue, coverPath, output)
+}
+
+func cleanEPUBIssue(issue Issue) Issue {
+	issue.Title = cleanXMLString(issue.Title)
+	issue.Sections = append([]Section(nil), issue.Sections...)
+	for sectionIndex := range issue.Sections {
+		section := &issue.Sections[sectionIndex]
+		section.Title = cleanXMLString(section.Title)
+		section.Articles = append([]Article(nil), section.Articles...)
+		for articleIndex := range section.Articles {
+			section.Articles[articleIndex] = cleanEPUBArticle(section.Articles[articleIndex])
+		}
+	}
+	return issue
+}
+
+func cleanEPUBArticle(article Article) Article {
+	article.Title = cleanXMLString(article.Title)
+	article.Author = cleanXMLString(article.Author)
+	article.Annotation = cleanXMLString(article.Annotation)
+	article.HTML = cleanXMLString(article.HTML)
+	return article
+}
+
+func cleanXMLString(value string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' || r >= 0x20 && r <= 0xD7FF || r >= 0xE000 && r <= 0xFFFD || r >= 0x10000 && r <= 0x10FFFF {
+			return r
+		}
+		return '\uFFFD'
+	}, value)
 }
 
 func newEPUB(title string) (*goepub.Epub, error) {
