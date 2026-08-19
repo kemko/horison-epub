@@ -54,9 +54,9 @@
 
 ### Task 3: Verify acceptance criteria
 
-- [ ] Запустить `make build`.
-- [ ] Запустить `make lint`.
-- [ ] Запустить `make coverage` и проверить покрытие не ниже 80%.
-- [ ] Запустить `make vuln`.
-- [ ] Запустить `make release-check`.
-- [ ] Запустить итоговый `make ci`.
+- [x] Запустить `make build`.
+- [x] Запустить `make lint`.
+- [x] Запустить `make coverage` и проверить покрытие не ниже 80%.
+- [x] Запустить `make vuln`.
+- [x] Запустить `make release-check`.
+- [x] Запустить итоговый `make ci`.
