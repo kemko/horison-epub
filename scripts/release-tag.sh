@@ -2,14 +2,17 @@
 set -euo pipefail
 
 tag_for_run() {
-  local run_number="${RELEASE_RUN_NUMBER:?RELEASE_RUN_NUMBER is required}"
-  case "$run_number" in
-    ''|*[!0-9]*)
-      echo "RELEASE_RUN_NUMBER must be numeric" >&2
-      return 1
-      ;;
-  esac
-  printf 'v0.1.%s\n' "$run_number"
+  local tag patch max_patch=0
+  while IFS= read -r tag; do
+    patch="${tag#v0.1.}"
+    case "$patch" in
+      ''|*[!0-9]*) continue ;;
+    esac
+    if [ "$patch" -gt "$max_patch" ]; then
+      max_patch="$patch"
+    fi
+  done < <(git tag --list 'v0.1.*')
+  printf 'v0.1.%s\n' "$((max_patch + 1))"
 }
 
 tag_sha() {

@@ -103,9 +103,10 @@ updates.
 
 После успешного CI для push в `master` release workflow требует ровно один
 соответствующий merged pull request в `master`, создаёт идемпотентный тег серии
-`v0.1.x` с patch-компонентом из номера исходного CI run, формирует release notes
-из этого PR и публикует артефакты через GoReleaser. Для прямого push release job
-завершится ошибкой, но сам push не отменится.
+`v0.1.x` со следующим patch-компонентом после наибольшего существующего тега,
+формирует release notes из этого PR и публикует артефакты через GoReleaser.
+Release jobs выполняются последовательно, чтобы два merge не выбрали один тег.
+Для прямого push release job завершится ошибкой, но сам push не отменится.
 
 В настройках GitHub нужно запретить прямой push в `master`, требовать успешные CI
 jobs перед merge и разрешить `GITHUB_TOKEN` создавать tags и Releases.
