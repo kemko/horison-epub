@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -166,7 +167,11 @@ func cleanXMLString(value string) string {
 }
 
 func newEPUB(title string) (*goepub.Epub, error) {
-	if err := goepub.Use(goepub.MemoryFS); err != nil {
+	storage := goepub.MemoryFS
+	if runtime.GOOS == "windows" {
+		storage = goepub.OsFS
+	}
+	if err := goepub.Use(storage); err != nil {
 		return nil, fmt.Errorf("configure in-memory storage: %w", err)
 	}
 	return goepub.NewEpub(title)

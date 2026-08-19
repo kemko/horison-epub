@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -152,6 +153,9 @@ func TestWriteEPUBDoesNotReplaceOutputCreatedBeforePublish(t *testing.T) {
 }
 
 func TestWriteEPUBRejectsOutputDirectoryWritableByOthers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX directory permissions are not used on Windows")
+	}
 	directory := filepath.Join(t.TempDir(), "shared")
 	if err := os.Mkdir(directory, 0o700); err != nil {
 		t.Fatal(err)

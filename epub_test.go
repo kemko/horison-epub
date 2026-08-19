@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -105,6 +106,11 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 	for _, name := range []string{"EPUB/images/cover.png", "EPUB/images/image-001.png"} {
 		if _, err := png.DecodeConfig(bytes.NewReader(entries[name].body)); err != nil {
 			t.Errorf("%s is not a valid PNG: %v", name, err)
+		}
+	}
+	for name := range entries {
+		if strings.Contains(name, `\`) {
+			t.Errorf("archive entry %q contains a Windows path separator", name)
 		}
 	}
 
@@ -380,6 +386,9 @@ func TestBuildEPUBRequiresEveryIssueMaterial(t *testing.T) {
 }
 
 func TestNewEPUBDoesNotUseSharedTemporaryStorage(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("go-epub uses OS storage on Windows")
+	}
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
 	if err := goepub.Use(goepub.OsFS); err != nil {
 		t.Fatal(err)
