@@ -87,7 +87,7 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 	if len(entries["mimetype"].extra) != 0 {
 		t.Fatal("mimetype must not contain a ZIP extra field")
 	}
-	for _, name := range []string{"META-INF/container.xml", "EPUB/package.opf", "EPUB/nav.xhtml", "EPUB/toc.ncx", "EPUB/css/horisont.css", "EPUB/css/cover.css", "EPUB/xhtml/cover.xhtml", "EPUB/xhtml/contents.xhtml", "EPUB/xhtml/article-001-001.xhtml", "EPUB/xhtml/article-002-001.xhtml", "EPUB/images/cover.png", "EPUB/images/image-001.png"} {
+	for _, name := range []string{"META-INF/container.xml", "EPUB/package.opf", "EPUB/nav.xhtml", "EPUB/toc.ncx", "EPUB/css/horizon.css", "EPUB/css/cover.css", "EPUB/xhtml/cover.xhtml", "EPUB/xhtml/contents.xhtml", "EPUB/xhtml/article-001-001.xhtml", "EPUB/xhtml/article-002-001.xhtml", "EPUB/images/cover.png", "EPUB/images/image-001.png"} {
 		if _, ok := entries[name]; !ok {
 			t.Errorf("missing archive entry %q", name)
 		}

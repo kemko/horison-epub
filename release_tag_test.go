@@ -48,7 +48,7 @@ func TestReleaseTagScriptIsNumericAndIdempotent(t *testing.T) {
 	}
 	mockDir := t.TempDir()
 	env := map[string]string{
-		"GITHUB_REPOSITORY":  "example/horisont-epub",
+		"GITHUB_REPOSITORY":  "example/horizon-epub",
 		"RELEASE_RUN_NUMBER": "41",
 		"PATH":               mockExecutableDir + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"RELEASE_SHA":        strings.Repeat("a", 40),

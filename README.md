@@ -1,6 +1,6 @@
-# horisont-epub
+# horizon-epub
 
-`horisont-epub` скачивает один выпуск журнала «Горизонт» с сайта «Астра Нова»
+`horizon-epub` скачивает один выпуск журнала «Горизонт» с сайта «Астра Нова»
 и сохраняет его как книгу EPUB. Тексты и изображения входят в файл: после
 загрузки книгу можно читать без интернета.
 
@@ -10,7 +10,7 @@
 ## Windows: запуск через cmd
 
 1. На странице релиза раскройте **Assets** и скачайте архив
-   `horisont-epub_<версия>_windows_amd64.zip`. Он подходит для большинства
+   `horizon-epub_<версия>_windows_amd64.zip`. Он подходит для большинства
    64-битных компьютеров с процессором Intel или AMD. Архив с `arm64` нужен
    только для Windows on ARM.
 2. В Проводнике нажмите на архив правой кнопкой мыши, выберите **Извлечь всё**,
@@ -21,14 +21,14 @@
    а не отдельной статьи. Выполните команду, заменив адрес своим:
 
 ```cmd
-horisont-epub.exe "https://astra-nova.org/issues/horisont/horisont-n-82/"
+horizon-epub.exe "https://astra-nova.org/issues/horizon/horizon-n-82/"
 ```
 
 Не закрывайте окно, пока идёт загрузка. После сообщения `Опубликован EPUB` файл
-`horisont-n-82.epub` появится рядом с программой. Откройте его в любой программе
+`horizon-n-82.epub` появится рядом с программой. Откройте его в любой программе
 или на устройстве, поддерживающем EPUB.
 
-Двойной щелчок по `horisont-epub.exe` не подходит: программе нужно передать
+Двойной щелчок по `horizon-epub.exe` не подходит: программе нужно передать
 адрес выпуска, поэтому её следует запускать через `cmd`.
 
 Чтобы выбрать имя и папку для книги, сначала создайте папку, а затем укажите
@@ -36,7 +36,7 @@ horisont-epub.exe "https://astra-nova.org/issues/horisont/horisont-n-82/"
 
 ```cmd
 mkdir "%USERPROFILE%\Books"
-horisont-epub.exe -o "%USERPROFILE%\Books\Горизонт-82.epub" "https://astra-nova.org/issues/horisont/horisont-n-82/"
+horizon-epub.exe -o "%USERPROFILE%\Books\Горизонт-82.epub" "https://astra-nova.org/issues/horizon/horizon-n-82/"
 ```
 
 Программа не перезаписывает существующие файлы. Если книга с таким именем уже
@@ -44,7 +44,7 @@ horisont-epub.exe -o "%USERPROFILE%\Books\Горизонт-82.epub" "https://ast
 
 ### Частые проблемы в Windows
 
-- **«horisont-epub.exe не является внутренней или внешней командой»** — архив
+- **«horizon-epub.exe не является внутренней или внешней командой»** — архив
   не распакован или `cmd` открыт не в папке с программой. Повторите шаги 2–3.
 - **`output ... already exists`** — файл с таким именем уже существует. Выберите
   другое имя или уберите старый файл.
@@ -68,14 +68,14 @@ horisont-epub.exe -o "%USERPROFILE%\Books\Горизонт-82.epub" "https://ast
 Распакуйте архив, откройте терминал в папке с программой и выполните:
 
 ```sh
-chmod +x horisont-epub
-./horisont-epub "https://astra-nova.org/issues/horisont/horisont-n-82/"
+chmod +x horizon-epub
+./horizon-epub "https://astra-nova.org/issues/horizon/horizon-n-82/"
 ```
 
 Чтобы выбрать место сохранения:
 
 ```sh
-./horisont-epub -o "$HOME/Books/horisont-n-82.epub" "https://astra-nova.org/issues/horisont/horisont-n-82/"
+./horizon-epub -o "$HOME/Books/horizon-n-82.epub" "https://astra-nova.org/issues/horizon/horizon-n-82/"
 ```
 
 Папка после `-o` должна существовать. Программа не перезаписывает готовые файлы.
@@ -83,7 +83,7 @@ chmod +x horisont-epub
 ## Параметры
 
 ```text
-horisont-epub [-allow-private-network] [-o output.epub] <issue-url>
+horizon-epub [-allow-private-network] [-o output.epub] <issue-url>
 ```
 
 - `-o` задаёт путь и имя EPUB. Без него имя берётся из адреса выпуска, а файл

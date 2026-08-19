@@ -1,4 +1,4 @@
-module horisont-epub
+module horizon-epub
 
 go 1.25.0
 
