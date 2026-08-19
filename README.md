@@ -1,4 +1,4 @@
-# horizont-epub
+# horisont-epub
 
 CLI для сборки выпусков «Горизонта» в автономный EPUB 3.
 
@@ -14,7 +14,7 @@ actionlint v1.7.12.
 make build
 ```
 
-Бинарник создаётся как `bin/horizont-epub`. Доступны следующие цели:
+Бинарник создаётся как `bin/horisont-epub`. Доступны следующие цели:
 
 ```text
 make build         Сборка бинарника
@@ -42,19 +42,19 @@ actionlint .github/workflows/ci.yml .github/workflows/release.yml
 ## Использование
 
 ```text
-bin/horizont-epub [-allow-private-network] [-o output.epub] <issue-url>
+bin/horisont-epub [-allow-private-network] [-o output.epub] <issue-url>
 ```
 
 Без `-o` имя результата берётся из последнего сегмента пути URL. Например:
 
 ```sh
-bin/horizont-epub https://astra-nova.org/issues/horisont/horisont-n-82/
+bin/horisont-epub https://astra-nova.org/issues/horisont/horisont-n-82/
 ```
 
 создаёт `horisont-n-82.epub` в текущем каталоге. Пользовательский путь задаётся явно:
 
 ```sh
-bin/horizont-epub -o books/horisont-n-82.epub https://astra-nova.org/issues/horisont/horisont-n-82/
+bin/horisont-epub -o books/horisont-n-82.epub https://astra-nova.org/issues/horisont/horisont-n-82/
 ```
 
 Каталог назначения должен существовать заранее; утилита не создаёт отсутствующие каталоги. На Unix каталог не должен быть доступен для записи группе или другим пользователям. На Windows синтетические POSIX-биты не проверяются.

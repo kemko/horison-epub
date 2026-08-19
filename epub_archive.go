@@ -156,7 +156,7 @@ func expectedEPUBEntries(issue Issue, coverPath string) map[string]struct{} {
 		"EPUB/package.opf":                             {},
 		"EPUB/nav.xhtml":                               {},
 		"EPUB/toc.ncx":                                 {},
-		"EPUB/css/horizont.css":                        {},
+		"EPUB/css/horisont.css":                        {},
 		"EPUB/css/cover.css":                           {},
 		"EPUB/xhtml/cover.xhtml":                       {},
 		"EPUB/xhtml/contents.xhtml":                    {},

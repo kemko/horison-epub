@@ -268,7 +268,7 @@ func TestRunBuildsEPUBAndPrintsOutput(t *testing.T) {
 		}
 	}()
 	for _, file := range archive.File {
-		if strings.Contains(file.Name, ".horizont-epub-") {
+		if strings.Contains(file.Name, ".horisont-epub-") {
 			t.Fatalf("temporary filename leaked into EPUB: %q", file.Name)
 		}
 	}

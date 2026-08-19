@@ -41,7 +41,7 @@ func TestEndToEndBuildsAutonomousEPUB(t *testing.T) {
 		"EPUB/xhtml/cover.xhtml",
 		"EPUB/images/cover.png",
 		"EPUB/images/image-001.png",
-		"EPUB/css/horizont.css",
+		"EPUB/css/horisont.css",
 	} {
 		if _, ok := entries[name]; !ok {
 			t.Errorf("missing archive entry %q", name)

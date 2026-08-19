@@ -76,7 +76,7 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writ
 	epubFile.SetLang("ru")
 	epubFile.SetIdentifier(issue.URL)
 
-	cssPath, err := epubFile.AddCSS(cssDataURL(epubCSS), "horizont.css")
+	cssPath, err := epubFile.AddCSS(cssDataURL(epubCSS), "horisont.css")
 	if err != nil {
 		return fmt.Errorf("epub: add CSS: %w", err)
 	}
@@ -173,7 +173,7 @@ func newEPUB(title string) (*goepub.Epub, error) {
 }
 
 func writeEPUBArchive(epubFile *goepub.Epub, issue Issue, coverPath string, output io.Writer) (returnErr error) {
-	staged, err := os.CreateTemp("", "horizont-epub-build-*.epub")
+	staged, err := os.CreateTemp("", "horisont-epub-build-*.epub")
 	if err != nil {
 		return fmt.Errorf("epub: create staged archive: %w", err)
 	}
