@@ -15,11 +15,11 @@ import (
 )
 
 func TestOutputPathFor(t *testing.T) {
-	got, err := outputPathFor("https://example.test/issues/horizon-n-82/?page=1", "")
+	got, err := outputPathFor("https://example.test/issues/horisont-n-82/?page=1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "horizon-n-82.epub" {
+	if got != "horisont-n-82.epub" {
 		t.Fatalf("default output = %q", got)
 	}
 

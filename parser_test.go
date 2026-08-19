@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const issueURL = "https://astra-nova.org/issues/horizon/horizon-n-82/"
+const issueURL = "https://astra-nova.org/issues/horisont/horisont-n-82/"
 
 func TestParseHTTPURLRejectsAndRedactsCredentials(t *testing.T) {
 	const secret = "do-not-log-this"
@@ -104,7 +104,7 @@ func TestParseIssueUsesLazyLoadedCoverURL(t *testing.T) {
 		`<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" data-src="/cover.jpg">`,
 		`<img data-lazy-src="/cover.jpg">`,
 	} {
-		html := `<h1 class="entry-title">Выпуск</h1><div class="entry-content">` + image + `<h2>Содержание</h2><h4>Раздел</h4><p><a href="/issues/horizon/horizon-n-82/article/">Статья</a></p></div>`
+		html := `<h1 class="entry-title">Выпуск</h1><div class="entry-content">` + image + `<h2>Содержание</h2><h4>Раздел</h4><p><a href="/issues/horisont/horisont-n-82/article/">Статья</a></p></div>`
 		issue, err := ParseIssue(strings.NewReader(html), issueURL)
 		if err != nil {
 			t.Fatal(err)
@@ -116,7 +116,7 @@ func TestParseIssueUsesLazyLoadedCoverURL(t *testing.T) {
 }
 
 func TestParseIssuePreservesAnnotationSpacingAcrossMarkup(t *testing.T) {
-	html := `<h1 class="entry-title">Выпуск</h1><div class="entry-content"><img src="/cover.jpg"><h2>Содержание</h2><h4>Раздел</h4><p>Автор. <a href="/issues/horizon/horizon-n-82/article/">Статья</a><br>Текст <em>с выделением</em> дальше</p></div>`
+	html := `<h1 class="entry-title">Выпуск</h1><div class="entry-content"><img src="/cover.jpg"><h2>Содержание</h2><h4>Раздел</h4><p>Автор. <a href="/issues/horisont/horisont-n-82/article/">Статья</a><br>Текст <em>с выделением</em> дальше</p></div>`
 	issue, err := ParseIssue(strings.NewReader(html), issueURL)
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestParseIssueDiscardsEmptySectionsAndLimitsMaterials(t *testing.T) {
 		emptySections.WriteString("<h4>Пустой раздел</h4>")
 	}
 	html := `<h1 class="entry-title">Выпуск</h1><div class="entry-content"><img src="/cover.jpg"><h2>Содержание</h2>` +
-		emptySections.String() + `<h4>Раздел</h4><p><a href="/issues/horizon/horizon-n-82/article/">Статья</a></p></div>`
+		emptySections.String() + `<h4>Раздел</h4><p><a href="/issues/horisont/horisont-n-82/article/">Статья</a></p></div>`
 	issue, err := ParseIssue(strings.NewReader(html), issueURL)
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestParseIssueDiscardsEmptySectionsAndLimitsMaterials(t *testing.T) {
 	var materials strings.Builder
 	materials.WriteString(`<h1 class="entry-title">Выпуск</h1><div class="entry-content"><img src="/cover.jpg"><h2>Содержание</h2><h4>Раздел</h4>`)
 	for index := range maxArticlesPerIssue + 1 {
-		fmt.Fprintf(&materials, `<p><a href="/issues/horizon/horizon-n-82/article-%d/">Статья</a></p>`, index)
+		fmt.Fprintf(&materials, `<p><a href="/issues/horisont/horisont-n-82/article-%d/">Статья</a></p>`, index)
 	}
 	materials.WriteString(`</div>`)
 	_, err = ParseIssue(strings.NewReader(materials.String()), issueURL)
