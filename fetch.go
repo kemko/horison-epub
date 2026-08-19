@@ -32,15 +32,17 @@ const (
 	maxGIFFrames     = 1_000
 	maxFetchRequests = 2_000
 	maxFetchedBytes  = 512 << 20
+	maxDecodedPixels = 512_000_000
 	defaultUserAgent = "horizont-epub/1.0"
 )
 
 type Fetcher struct {
-	client       *http.Client
-	tempDir      string
-	images       map[string]FetchedImage
-	requests     int
-	fetchedBytes int64
+	client        *http.Client
+	tempDir       string
+	images        map[string]FetchedImage
+	requests      int
+	fetchedBytes  int64
+	decodedPixels int64
 }
 
 type FetchedImage struct {
@@ -139,7 +141,7 @@ func (f *Fetcher) FetchImage(rawURL string) (FetchedImage, error) {
 	if err := f.consumeBytes(int64(len(body))); err != nil {
 		return FetchedImage{}, fetchError(rawURL, "%w", err)
 	}
-	kind, err := detectImageKind(body)
+	kind, err := detectImageKindWithPixelBudget(body, f.consumeDecodedPixels)
 	if err != nil {
 		return FetchedImage{}, fetchError(rawURL, "%w", err)
 	}
@@ -213,6 +215,14 @@ func (f *Fetcher) consumeBytes(size int64) error {
 		return fmt.Errorf("issue exceeds %d-byte download limit", maxFetchedBytes)
 	}
 	f.fetchedBytes += size
+	return nil
+}
+
+func (f *Fetcher) consumeDecodedPixels(size int64) error {
+	if size > maxDecodedPixels-f.decodedPixels {
+		return fmt.Errorf("issue exceeds %d-decoded-pixel limit", maxDecodedPixels)
+	}
+	f.decodedPixels += size
 	return nil
 }
 
@@ -342,6 +352,10 @@ type imageKind struct {
 }
 
 func detectImageKind(body []byte) (imageKind, error) {
+	return detectImageKindWithPixelBudget(body, nil)
+}
+
+func detectImageKindWithPixelBudget(body []byte, consumePixels func(int64) error) (imageKind, error) {
 	var kind imageKind
 	switch {
 	case len(body) >= 3 && body[0] == 0xff && body[1] == 0xd8 && body[2] == 0xff:
@@ -360,13 +374,13 @@ func detectImageKind(body []byte) (imageKind, error) {
 		}
 		return imageKind{mime: "image/svg+xml", ext: ".svg"}, nil
 	}
-	if err := validateRasterImage(body, kind); err != nil {
+	if err := validateRasterImage(body, kind, consumePixels); err != nil {
 		return imageKind{}, fmt.Errorf("invalid %s image: %w", kind.mime, err)
 	}
 	return kind, nil
 }
 
-func validateRasterImage(body []byte, kind imageKind) error {
+func validateRasterImage(body []byte, kind imageKind, consumePixels func(int64) error) error {
 	reader := bytes.NewReader(body)
 	var config image.Config
 	var err error
@@ -386,6 +400,18 @@ func validateRasterImage(body []byte, kind imageKind) error {
 	if err := validateRasterDimensions(config); err != nil {
 		return err
 	}
+	pixels := int64(config.Width) * int64(config.Height)
+	if kind.mime == "image/gif" {
+		pixels, err = gifFramePixels(body)
+		if err != nil {
+			return err
+		}
+	}
+	if consumePixels != nil {
+		if err := consumePixels(pixels); err != nil {
+			return err
+		}
+	}
 
 	reader.Reset(body)
 	switch kind.mime {
@@ -394,17 +420,19 @@ func validateRasterImage(body []byte, kind imageKind) error {
 	case "image/png":
 		_, err = png.Decode(reader)
 	case "image/gif":
-		if err = validateGIFFrames(body); err != nil {
-			return err
-		}
 		_, err = gif.DecodeAll(reader)
 	}
 	return err
 }
 
 func validateGIFFrames(body []byte) error {
+	_, err := gifFramePixels(body)
+	return err
+}
+
+func gifFramePixels(body []byte) (int64, error) {
 	if len(body) < 13 {
-		return io.ErrUnexpectedEOF
+		return 0, io.ErrUnexpectedEOF
 	}
 	offset := 13
 	if body[10]&0x80 != 0 {
@@ -418,30 +446,30 @@ func validateGIFFrames(body []byte) error {
 		switch block {
 		case 0x21: // Extension.
 			if offset >= len(body) {
-				return io.ErrUnexpectedEOF
+				return 0, io.ErrUnexpectedEOF
 			}
 			offset++ // Extension label.
 			var err error
 			offset, err = skipGIFSubBlocks(body, offset)
 			if err != nil {
-				return err
+				return 0, err
 			}
 		case 0x2c: // Image descriptor.
 			if len(body)-offset < 9 {
-				return io.ErrUnexpectedEOF
+				return 0, io.ErrUnexpectedEOF
 			}
 			width := int64(binary.LittleEndian.Uint16(body[offset+4 : offset+6]))
 			height := int64(binary.LittleEndian.Uint16(body[offset+6 : offset+8]))
 			if width == 0 || height == 0 {
-				return fmt.Errorf("GIF frame has invalid dimensions %dx%d", width, height)
+				return 0, fmt.Errorf("GIF frame has invalid dimensions %dx%d", width, height)
 			}
 			frames++
 			if frames > maxGIFFrames {
-				return fmt.Errorf("GIF exceeds %d-frame limit", maxGIFFrames)
+				return 0, fmt.Errorf("GIF exceeds %d-frame limit", maxGIFFrames)
 			}
 			pixels += width * height
 			if pixels > maxImagePixels {
-				return fmt.Errorf("GIF frames exceed %d-pixel limit", maxImagePixels)
+				return 0, fmt.Errorf("GIF frames exceed %d-pixel limit", maxImagePixels)
 			}
 			packed := body[offset+8]
 			offset += 9
@@ -449,24 +477,24 @@ func validateGIFFrames(body []byte) error {
 				offset += 3 << ((packed & 0x07) + 1)
 			}
 			if offset >= len(body) {
-				return io.ErrUnexpectedEOF
+				return 0, io.ErrUnexpectedEOF
 			}
 			offset++ // LZW minimum code size.
 			var err error
 			offset, err = skipGIFSubBlocks(body, offset)
 			if err != nil {
-				return err
+				return 0, err
 			}
 		case 0x3b: // Trailer.
 			if frames == 0 {
-				return fmt.Errorf("GIF contains no frames")
+				return 0, fmt.Errorf("GIF contains no frames")
 			}
-			return nil
+			return pixels, nil
 		default:
-			return fmt.Errorf("GIF contains unknown block type 0x%02x", block)
+			return 0, fmt.Errorf("GIF contains unknown block type 0x%02x", block)
 		}
 	}
-	return io.ErrUnexpectedEOF
+	return 0, io.ErrUnexpectedEOF
 }
 
 func skipGIFSubBlocks(body []byte, offset int) (int, error) {

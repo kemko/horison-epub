@@ -315,6 +315,20 @@ func TestFetchImageRejectsOversize(t *testing.T) {
 	}
 }
 
+func TestFetchImageEnforcesDecodedPixelBudget(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes())
+	}))
+	defer server.Close()
+
+	fetcher := newTestFetcher(t)
+	fetcher.decodedPixels = maxDecodedPixels
+	if _, err := fetcher.FetchImage(server.URL + "/image.png"); err == nil || !strings.Contains(err.Error(), "decoded-pixel limit") {
+		t.Fatalf("decoded-pixel limit error = %v", err)
+	}
+}
+
 func TestFetchImageRedirectDeduplicatesAndStoresFile(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
