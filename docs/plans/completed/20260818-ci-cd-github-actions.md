@@ -10,7 +10,7 @@ Status: Completed
 
 ## Context
 
-- Текущий модуль: `horizon-epub`, Go 1.25+, один `main` package.
+- Текущий модуль: `horizon-epub`, Go 1.26.6, один `main` package.
 - Проверки выполняются через Makefile локально и в GitHub Actions.
 - Покрытие при реализации составило не менее 83,1% при минимальном пороге 80%.
 - Настроены CI/CD, golangci-lint, Dependabot и GoReleaser.

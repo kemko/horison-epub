@@ -9,16 +9,17 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestOutputPathFor(t *testing.T) {
-	got, err := outputPathFor("https://example.test/issues/horizon-n-82/?page=1", "")
+	got, err := outputPathFor("https://example.test/issues/horisont-n-82/?page=1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "horizon-n-82.epub" {
+	if got != "horisont-n-82.epub" {
 		t.Fatalf("default output = %q", got)
 	}
 
@@ -152,6 +153,9 @@ func TestWriteEPUBDoesNotReplaceOutputCreatedBeforePublish(t *testing.T) {
 }
 
 func TestWriteEPUBRejectsOutputDirectoryWritableByOthers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX directory permissions are not used on Windows")
+	}
 	directory := filepath.Join(t.TempDir(), "shared")
 	if err := os.Mkdir(directory, 0o700); err != nil {
 		t.Fatal(err)

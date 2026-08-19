@@ -21,11 +21,11 @@
    а не отдельной статьи. Выполните команду, заменив адрес своим:
 
 ```cmd
-horizon-epub.exe "https://astra-nova.org/issues/horizon/horizon-n-82/"
+horizon-epub.exe "https://astra-nova.org/issues/horisont/horisont-n-82/"
 ```
 
 Не закрывайте окно, пока идёт загрузка. После сообщения `Опубликован EPUB` файл
-`horizon-n-82.epub` появится рядом с программой. Откройте его в любой программе
+`horisont-n-82.epub` появится рядом с программой. Откройте его в любой программе
 или на устройстве, поддерживающем EPUB.
 
 Двойной щелчок по `horizon-epub.exe` не подходит: программе нужно передать
@@ -36,7 +36,7 @@ horizon-epub.exe "https://astra-nova.org/issues/horizon/horizon-n-82/"
 
 ```cmd
 mkdir "%USERPROFILE%\Books"
-horizon-epub.exe -o "%USERPROFILE%\Books\Горизонт-82.epub" "https://astra-nova.org/issues/horizon/horizon-n-82/"
+horizon-epub.exe -o "%USERPROFILE%\Books\Горизонт-82.epub" "https://astra-nova.org/issues/horisont/horisont-n-82/"
 ```
 
 Программа не перезаписывает существующие файлы. Если книга с таким именем уже
@@ -69,13 +69,13 @@ horizon-epub.exe -o "%USERPROFILE%\Books\Горизонт-82.epub" "https://astr
 
 ```sh
 chmod +x horizon-epub
-./horizon-epub "https://astra-nova.org/issues/horizon/horizon-n-82/"
+./horizon-epub "https://astra-nova.org/issues/horisont/horisont-n-82/"
 ```
 
 Чтобы выбрать место сохранения:
 
 ```sh
-./horizon-epub -o "$HOME/Books/horizon-n-82.epub" "https://astra-nova.org/issues/horizon/horizon-n-82/"
+./horizon-epub -o "$HOME/Books/horisont-n-82.epub" "https://astra-nova.org/issues/horisont/horisont-n-82/"
 ```
 
 Папка после `-o` должна существовать. Программа не перезаписывает готовые файлы.
