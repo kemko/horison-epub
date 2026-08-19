@@ -665,5 +665,24 @@ func redactURLError(err error) error {
 	}
 	redacted := *requestErr
 	redacted.URL = redactURL(requestErr.URL)
+	if requestErr.Err != nil && strings.HasPrefix(requestErr.Err.Error(), "failed to parse Location header ") {
+		redacted.Err = redactedError{
+			message: "failed to parse Location header",
+			cause:   requestErr.Err,
+		}
+	}
 	return &redacted
+}
+
+type redactedError struct {
+	message string
+	cause   error
+}
+
+func (e redactedError) Error() string {
+	return e.message
+}
+
+func (e redactedError) Unwrap() error {
+	return e.cause
 }

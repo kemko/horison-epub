@@ -260,6 +260,24 @@ func TestFetchHTMLStopsAfterTenRedirects(t *testing.T) {
 	}
 }
 
+func TestFetchHTMLRedactsMalformedRedirectLocation(t *testing.T) {
+	const secret = "do-not-log-this"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", "/%zz?token="+secret)
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer server.Close()
+
+	fetcher := newTestFetcher(t)
+	_, _, err := fetcher.FetchHTML(server.URL)
+	if err == nil || !strings.Contains(err.Error(), "Location header") {
+		t.Fatalf("redirect error = %v", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("redirect error exposes query secret: %v", err)
+	}
+}
+
 func TestFetchImageValidatesMIMEAndExtension(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
