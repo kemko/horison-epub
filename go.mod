@@ -1,6 +1,6 @@
 module horizon-epub
 
-go 1.25.0
+go 1.26.6
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.2

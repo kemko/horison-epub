@@ -48,13 +48,13 @@
 - Modify: `.github/workflows/ci.yml`
 - Modify: `.github/workflows/release.yml`
 
-- [ ] Зафиксировать baseline `go 1.26.6` в `go.mod`.
-- [ ] Добавить в Makefile переопределяемую версию сканирования, по умолчанию получаемую из `GoVersion` главного модуля, нормализовать её до `go1.26.6` и передавать govulncheck через `GOVERSION`.
-- [ ] Проверить диагноз командой `make vuln VULN_GO_VERSION=go1.25.12`: она должна завершиться ненулевым кодом и показать перечисленные уязвимости стандартной библиотеки.
-- [ ] Проверить исправленный baseline обычной командой `make vuln`: сканирование Go 1.26.6 должно пройти.
-- [ ] Во всех jobs `ci.yml` и в `release.yml` заменить диапазон `1.25.x` на `go-version-file: go.mod`, чтобы локальная проверка, CI и release использовали один источник версии.
-- [ ] Не добавлять отдельные тесты для Makefile/workflows; запустить `actionlint .github/workflows/ci.yml .github/workflows/release.yml`.
-- [ ] Запустить `make test`; он должен пройти перед Task 3.
+- [x] Зафиксировать baseline `go 1.26.6` в `go.mod`.
+- [x] Добавить в Makefile переопределяемую версию сканирования, по умолчанию получаемую из `GoVersion` главного модуля, нормализовать её до `go1.26.6` и передавать govulncheck через `GOVERSION`.
+- [x] Проверить диагноз командой `make vuln VULN_GO_VERSION=go1.25.12`: она должна завершиться ненулевым кодом и показать перечисленные уязвимости стандартной библиотеки.
+- [x] Проверить исправленный baseline обычной командой `make vuln`: сканирование Go 1.26.6 должно пройти.
+- [x] Во всех jobs `ci.yml` и в `release.yml` заменить диапазон `1.25.x` на `go-version-file: go.mod`, чтобы локальная проверка, CI и release использовали один источник версии.
+- [x] Не добавлять отдельные тесты для Makefile/workflows; запустить `actionlint .github/workflows/ci.yml .github/workflows/release.yml`.
+- [x] Запустить `make test`; он должен пройти перед Task 3.
 
 ### Task 3: Документировать причину и выполнить полный набор проверок
 

@@ -7,6 +7,8 @@ GORELEASER ?= goreleaser
 
 BINARY ?= bin/horizon-epub
 COVERAGE_MIN ?= 80
+VULN_GO_VERSION ?= $(shell $(GO) list -m -f '{{.GoVersion}}')
+VULN_GO_VERSION_NORMALIZED := $(if $(filter go%,$(VULN_GO_VERSION)),$(VULN_GO_VERSION),go$(VULN_GO_VERSION))
 
 .PHONY: build test test-race lint coverage vuln release-check ci clean
 
@@ -35,7 +37,7 @@ coverage:
 	awk -v coverage="$$coverage" -v minimum="$(COVERAGE_MIN)" 'BEGIN { if (coverage + 0 < minimum + 0) { printf "coverage %.1f%% is below minimum %.1f%%\n", coverage, minimum > "/dev/stderr"; exit 1 } }'
 
 vuln:
-	$(GOVULNCHECK) ./...
+	GOVERSION=$(VULN_GO_VERSION_NORMALIZED) $(GOVULNCHECK) ./...
 
 release-check:
 	@set -eu; \
