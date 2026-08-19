@@ -11,35 +11,46 @@ import (
 	"time"
 )
 
-func TestReleaseTagScriptIsNumericAndIdempotent(t *testing.T) {
+func TestReleaseTagScriptUsesNextPatchAndIsIdempotent(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("release workflow runs on Linux")
 	}
 
-	for _, test := range []struct {
-		runNumber string
-		want      string
-		wantErr   bool
-	}{
-		{runNumber: "41", want: "v0.1.41"},
-		{runNumber: "42", want: "v0.1.42"},
-		{runNumber: "not-a-number", wantErr: true},
-	} {
-		output, err := runReleaseScript(t, "scripts/release-tag.sh", []string{"tag"}, map[string]string{
-			"RELEASE_RUN_NUMBER": test.runNumber,
-		})
-		if test.wantErr {
-			if err == nil {
-				t.Fatalf("run number %q was accepted", test.runNumber)
-			}
-			continue
+	repository := t.TempDir()
+	runGit := func(args ...string) {
+		// Tests pass only fixed Git commands from this test.
+		//nolint:gosec
+		command := exec.CommandContext(t.Context(), "git", args...)
+		command.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+		)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, output)
 		}
-		if err != nil {
-			t.Fatalf("run number %q: %v: %s", test.runNumber, err, output)
-		}
-		if got := strings.TrimSpace(string(output)); got != test.want {
-			t.Fatalf("run number %q: tag = %q, want %q", test.runNumber, got, test.want)
-		}
+	}
+	runGit("init", repository)
+	runGit("-C", repository, "commit", "--allow-empty", "-m", "test")
+	runGit("-C", repository, "tag", "v0.2.99")
+
+	output, err := runReleaseScriptInDir(t, repository, "scripts/release-tag.sh", []string{"tag"}, nil)
+	if err != nil {
+		t.Fatalf("first release tag: %v: %s", err, output)
+	}
+	if got, want := strings.TrimSpace(string(output)), "v0.1.1"; got != want {
+		t.Fatalf("first tag = %q, want %q", got, want)
+	}
+
+	for _, tag := range []string{"v0.1.13", "v0.1.15", "v0.1.invalid"} {
+		runGit("-C", repository, "tag", tag)
+	}
+
+	output, err = runReleaseScriptInDir(t, repository, "scripts/release-tag.sh", []string{"tag"}, nil)
+	if err != nil {
+		t.Fatalf("next release tag: %v: %s", err, output)
+	}
+	if got, want := strings.TrimSpace(string(output)), "v0.1.16"; got != want {
+		t.Fatalf("tag = %q, want %q", got, want)
 	}
 
 	mockExecutableDir, err := filepath.Abs("testdata")
@@ -48,21 +59,20 @@ func TestReleaseTagScriptIsNumericAndIdempotent(t *testing.T) {
 	}
 	mockDir := t.TempDir()
 	env := map[string]string{
-		"GITHUB_REPOSITORY":  "example/horisont-epub",
-		"RELEASE_RUN_NUMBER": "41",
-		"PATH":               mockExecutableDir + string(os.PathListSeparator) + os.Getenv("PATH"),
-		"RELEASE_SHA":        strings.Repeat("a", 40),
-		"MOCK_GH_SHA":        strings.Repeat("a", 40),
-		"MOCK_GH_STATE":      filepath.Join(mockDir, "tag.sha"),
+		"GITHUB_REPOSITORY": "example/horisont-epub",
+		"PATH":              mockExecutableDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"RELEASE_SHA":       strings.Repeat("a", 40),
+		"MOCK_GH_SHA":       strings.Repeat("a", 40),
+		"MOCK_GH_STATE":     filepath.Join(mockDir, "tag.sha"),
 	}
 	for attempt := range 2 {
-		if output, err := runReleaseScript(t, "scripts/release-tag.sh", []string{"ensure"}, env); err != nil {
+		if output, err := runReleaseScriptInDir(t, repository, "scripts/release-tag.sh", []string{"ensure"}, env); err != nil {
 			t.Fatalf("ensure attempt %d: %v: %s", attempt+1, err, output)
 		}
 	}
 
 	env["RELEASE_SHA"] = strings.Repeat("b", 40)
-	if _, err := runReleaseScript(t, "scripts/release-tag.sh", []string{"ensure"}, env); err == nil {
+	if _, err := runReleaseScriptInDir(t, repository, "scripts/release-tag.sh", []string{"ensure"}, env); err == nil {
 		t.Fatal("existing tag accepted a different SHA")
 	}
 
@@ -70,14 +80,14 @@ func TestReleaseTagScriptIsNumericAndIdempotent(t *testing.T) {
 	env["RELEASE_SHA"] = strings.Repeat("c", 40)
 	env["MOCK_GH_SHA"] = env["RELEASE_SHA"]
 	env["MOCK_GH_POST_FAIL"] = "1"
-	if output, err := runReleaseScript(t, "scripts/release-tag.sh", []string{"ensure"}, env); err != nil {
+	if output, err := runReleaseScriptInDir(t, repository, "scripts/release-tag.sh", []string{"ensure"}, env); err != nil {
 		t.Fatalf("matching tag from POST race was rejected: %v: %s", err, output)
 	}
 
 	env["MOCK_GH_STATE"] = filepath.Join(mockDir, "mismatched-raced-tag.sha")
 	env["RELEASE_SHA"] = strings.Repeat("d", 40)
 	env["MOCK_GH_SHA"] = strings.Repeat("e", 40)
-	if _, err := runReleaseScript(t, "scripts/release-tag.sh", []string{"ensure"}, env); err == nil {
+	if _, err := runReleaseScriptInDir(t, repository, "scripts/release-tag.sh", []string{"ensure"}, env); err == nil {
 		t.Fatal("POST race accepted a tag with a different SHA")
 	}
 }
@@ -135,13 +145,22 @@ func TestReleaseNotesScriptRequiresOneMatchingPullRequest(t *testing.T) {
 }
 
 func runReleaseScript(t *testing.T, script string, args []string, extraEnv map[string]string) ([]byte, error) {
+	return runReleaseScriptInDir(t, "", script, args, extraEnv)
+}
+
+func runReleaseScriptInDir(t *testing.T, dir, script string, args []string, extraEnv map[string]string) ([]byte, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	script, err := filepath.Abs(script)
+	if err != nil {
+		t.Fatal(err)
+	}
 	commandArgs := append([]string{script}, args...)
 	// Tests pass only repository-owned scripts selected by the caller.
 	//nolint:gosec
 	command := exec.CommandContext(ctx, "bash", commandArgs...)
+	command.Dir = dir
 	command.Env = replaceTestEnvironment(os.Environ(), extraEnv)
 	output, err := command.CombinedOutput()
 	if ctx.Err() != nil {
