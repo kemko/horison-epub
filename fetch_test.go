@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/gif"
@@ -521,6 +522,23 @@ func TestGIFFrameLimits(t *testing.T) {
 	}
 	if _, err := gifFramePixels(testGIFStructure(2, 5_000, 5_000)); err == nil || !strings.Contains(err.Error(), "pixel limit") {
 		t.Fatalf("pixel limit error = %v", err)
+	}
+}
+
+func TestRejectsAnimatedPNG(t *testing.T) {
+	body := pngBytes()
+	animationControl := make([]byte, 20)
+	binary.BigEndian.PutUint32(animationControl[:4], 8)
+	copy(animationControl[4:8], "acTL")
+	binary.BigEndian.PutUint32(animationControl[8:12], 2)
+	binary.BigEndian.PutUint32(animationControl[16:], crc32.ChecksumIEEE(animationControl[4:16]))
+	body = append(append(append([]byte(nil), body[:33]...), animationControl...), body[33:]...)
+
+	if _, err := png.Decode(bytes.NewReader(body)); err != nil {
+		t.Fatalf("standard PNG decoder rejected APNG control chunk: %v", err)
+	}
+	if _, err := detectImageKindWithPixelBudget(body, nil); err == nil || !strings.Contains(err.Error(), "animated PNG") {
+		t.Fatalf("animated PNG error = %v", err)
 	}
 }
 

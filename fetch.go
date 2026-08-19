@@ -390,6 +390,9 @@ func validateRasterImage(body []byte, kind imageKind, consumePixels func(int64) 
 	case "image/jpeg":
 		config, err = jpeg.DecodeConfig(reader)
 	case "image/png":
+		if isAnimatedPNG(body) {
+			return fmt.Errorf("animated PNG is not supported")
+		}
 		config, err = png.DecodeConfig(reader)
 	case "image/gif":
 		config, err = gif.DecodeConfig(reader)
@@ -425,6 +428,20 @@ func validateRasterImage(body []byte, kind imageKind, consumePixels func(int64) 
 		_, err = gif.DecodeAll(reader)
 	}
 	return err
+}
+
+func isAnimatedPNG(body []byte) bool {
+	for offset := 8; len(body)-offset >= 12; {
+		length := binary.BigEndian.Uint32(body[offset : offset+4])
+		if int64(length) > int64(len(body)-offset-12) {
+			return false
+		}
+		if string(body[offset+4:offset+8]) == "acTL" {
+			return true
+		}
+		offset += 12 + int(length)
+	}
+	return false
 }
 
 func gifFramePixels(body []byte) (int64, error) {
