@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,15 +19,12 @@ func TestEndToEndBuildsAutonomousEPUB(t *testing.T) {
 	defer server.Close()
 
 	output := filepath.Join(t.TempDir(), "issue.epub")
-	var stdout, stderr strings.Builder
-	if err := run([]string{"-allow-private-network", "-o", output, server.URL + "/issues/demo/"}, &stdout, &stderr); err != nil {
+	var stdout strings.Builder
+	if err := run([]string{"-allow-private-network", "-o", output, server.URL + "/issues/demo/"}, &stdout, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(stdout.String()) != output {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), output)
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr = %q", stderr.String())
 	}
 	if sharedImageRequests.Load() != 1 {
 		t.Fatalf("shared image requests = %d, want 1", sharedImageRequests.Load())

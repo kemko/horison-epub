@@ -242,15 +242,12 @@ func TestRunBuildsEPUBAndPrintsOutput(t *testing.T) {
 	defer server.Close()
 
 	output := filepath.Join(t.TempDir(), "book.epub")
-	var stdout, stderr bytes.Buffer
-	if err := run([]string{"-allow-private-network", "-o", output, server.URL + "/issues/demo/"}, &stdout, &stderr); err != nil {
+	var stdout bytes.Buffer
+	if err := run([]string{"-allow-private-network", "-o", output, server.URL + "/issues/demo/"}, &stdout, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.TrimSpace(stdout.String()); got != output {
 		t.Fatalf("stdout = %q, want %q", got, output)
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr = %q", stderr.String())
 	}
 	if _, err := os.Stat(output); err != nil {
 		t.Fatal(err)

@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"os"
 	"path"
@@ -27,6 +28,7 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) (resultErr error) {
+	logger := log.New(stderr, "", 0)
 	flags := flag.NewFlagSet("horizont-epub", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	output := flags.String("o", "", "output EPUB path")
@@ -55,6 +57,7 @@ func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 	if err := refuseExistingOutput(outputPath); err != nil {
 		return err
 	}
+	logger.Printf("Загрузка выпуска %s", redactURL(issueURL))
 
 	fetcher, err := newFetcher(*allowPrivateNetwork)
 	if err != nil {
@@ -79,8 +82,10 @@ func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 	if err != nil {
 		return err
 	}
+	logger.Printf("Найдено уникальных материалов: %d", len(articleURLs))
 	articles := make([]Article, 0, len(articleURLs))
-	for _, articleURL := range articleURLs {
+	for index, articleURL := range articleURLs {
+		logger.Printf("Загрузка статьи %d/%d: %s", index+1, len(articleURLs), redactURL(articleURL))
 		body, finalArticleURL, err := fetcher.FetchHTML(articleURL)
 		if err != nil {
 			return err
@@ -95,7 +100,12 @@ func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 		articles = append(articles, article)
 	}
 
-	return writeEPUB(issue, articles, fetcher, outputPath, stdout)
+	logger.Printf("Сборка EPUB и загрузка изображений")
+	if err := writeEPUB(issue, articles, fetcher, outputPath, stdout); err != nil {
+		return err
+	}
+	logger.Printf("Опубликован EPUB: %q", outputPath)
+	return nil
 }
 
 func uniqueArticleURLs(issue Issue) ([]string, error) {
