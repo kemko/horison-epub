@@ -1,4 +1,4 @@
-# CI/CD для horizon-epub
+# CI/CD для horisont-epub
 
 Status: Completed
 
@@ -10,7 +10,7 @@ Status: Completed
 
 ## Context
 
-- Текущий модуль: `horizon-epub`, Go 1.26.6, один `main` package.
+- Текущий модуль: `horisont-epub`, Go 1.26.6, один `main` package.
 - Проверки выполняются через Makefile локально и в GitHub Actions.
 - Покрытие при реализации составило не менее 83,1% при минимальном пороге 80%.
 - Настроены CI/CD, golangci-lint, Dependabot и GoReleaser.
@@ -45,7 +45,7 @@ Status: Completed
 - Modify: `.gitignore`
 
 - [x] Добавить цели `build`, `test`, `test-race`, `lint`, `coverage`, `vuln`, `ci` и `clean`; объявить их `.PHONY`.
-- [x] Собирать `bin/horizon-epub` с `-trimpath`; позволить переопределять пути к внешним инструментам переменными Make.
+- [x] Собирать `bin/horisont-epub` с `-trimpath`; позволить переопределять пути к внешним инструментам переменными Make.
 - [x] Реализовать `coverage` через временный coverprofile, `go tool cover` и порог `COVERAGE_MIN=80`, всегда удаляя временный файл.
 - [x] Настроить golangci-lint v2 с фиксированным высокосигнальным набором: стандартные анализаторы, `bodyclose`, `errorlint`, `exhaustive`, `gocritic`, `gosec`, `misspell`, `nilerr`, `noctx`, `revive`, `unconvert`; отдельно проверять `gofmt` и `goimports`.
 - [x] Не добавлять исключения для текущего кода, поскольку выбранный набор уже проходит без предупреждений.
@@ -80,7 +80,7 @@ Status: Completed
 - Modify: `.github/workflows/ci.yml`
 - Modify: `.gitignore`
 
-- [x] Настроить GoReleaser v2 для бинарника `horizon-epub` с `CGO_ENABLED=0`, `-trimpath` и компактными ldflags.
+- [x] Настроить GoReleaser v2 для бинарника `horisont-epub` с `CGO_ENABLED=0`, `-trimpath` и компактными ldflags.
 - [x] Собирать Linux, macOS и Windows для `amd64` и `arm64`; использовать ZIP для Windows, tar.gz для остальных платформ.
 - [x] Формировать SHA-256 checksums и предсказуемые имена архивов без package managers, signing и иных неподтверждённых каналов публикации.
 - [x] Добавить `make release-check`, выполняющий `goreleaser check` и snapshot-сборку без публикации.

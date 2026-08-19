@@ -33,7 +33,7 @@ const (
 	maxFetchRequests = 2_000
 	maxFetchedBytes  = 512 << 20
 	maxDecodedPixels = 512_000_000
-	defaultUserAgent = "horizon-epub/1.0"
+	defaultUserAgent = "horisont-epub/1.0"
 )
 
 type Fetcher struct {
@@ -51,7 +51,7 @@ type FetchedImage struct {
 }
 
 func newFetcher(allowPrivateNetworks bool) (*Fetcher, error) {
-	dir, err := os.MkdirTemp("", "horizon-epub-images-")
+	dir, err := os.MkdirTemp("", "horisont-epub-images-")
 	if err != nil {
 		return nil, fmt.Errorf("create image temporary directory: %w", err)
 	}
