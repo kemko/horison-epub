@@ -98,6 +98,22 @@ func TestDialPublicNetworkRejectsBeforeConnect(t *testing.T) {
 	}
 }
 
+func TestDialAttemptContextSharesParentDeadline(t *testing.T) {
+	parent, cancelParent := context.WithTimeout(context.Background(), time.Hour)
+	defer cancelParent()
+	parentDeadline, _ := parent.Deadline()
+
+	attempt, cancelAttempt := dialAttemptContext(parent, 4)
+	defer cancelAttempt()
+	attemptDeadline, ok := attempt.Deadline()
+	if !ok {
+		t.Fatal("attempt context has no deadline")
+	}
+	if delta := parentDeadline.Sub(attemptDeadline); delta < 44*time.Minute || delta > 46*time.Minute {
+		t.Fatalf("attempt deadline leaves %s for later addresses, want about 45m", delta)
+	}
+}
+
 func TestFetcherRejectsAndRedactsURLCredentials(t *testing.T) {
 	const secret = "do-not-log-this"
 	fetcher := newTestFetcher(t)

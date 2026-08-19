@@ -52,6 +52,7 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writ
 	if err != nil {
 		return fmt.Errorf("epub: invalid issue URL: %w", err)
 	}
+	issue.URL = redactURL(issueURL)
 
 	// go-epub's storage backend is process-global. Serialize builds so its
 	// in-memory backend cannot be reset while another archive is being written.
@@ -72,7 +73,7 @@ func BuildEPUB(issue Issue, articles []Article, fetcher *Fetcher, output io.Writ
 		return fmt.Errorf("epub: create: %w", err)
 	}
 	epubFile.SetLang("ru")
-	epubFile.SetIdentifier(issueURL)
+	epubFile.SetIdentifier(issue.URL)
 
 	cssPath, err := epubFile.AddCSS(cssDataURL(epubCSS), "horizont.css")
 	if err != nil {
@@ -270,7 +271,7 @@ func rewriteArticleImages(body string, resources *epubResources) (string, error)
 		}
 		path, err := resources.add(src, "")
 		if err != nil {
-			firstErr = fmt.Errorf("image %q: %w", src, err)
+			firstErr = fmt.Errorf("image %q: %w", redactURL(src), err)
 			return
 		}
 		setAttr(n, "src", path)

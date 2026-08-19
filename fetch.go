@@ -233,13 +233,22 @@ func dialPublicNetwork(ctx context.Context, network, address string) (net.Conn, 
 		return nil, err
 	}
 
-	var dialer net.Dialer
-	var dialErr error
+	publicAddresses := make([]netip.Addr, 0, len(addresses))
 	for _, resolved := range addresses {
-		if !isPublicIP(resolved.AsSlice()) {
-			continue
+		if isPublicIP(resolved.AsSlice()) {
+			publicAddresses = append(publicAddresses, resolved)
 		}
-		connection, err := dialer.DialContext(ctx, network, net.JoinHostPort(resolved.String(), port))
+	}
+	if len(publicAddresses) == 0 {
+		return nil, fmt.Errorf("refusing non-public destination %q", address)
+	}
+
+	dialer := net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	var dialErr error
+	for index, resolved := range publicAddresses {
+		attemptContext, cancel := dialAttemptContext(ctx, len(publicAddresses)-index)
+		connection, err := dialer.DialContext(attemptContext, network, net.JoinHostPort(resolved.String(), port))
+		cancel()
 		if err != nil {
 			dialErr = errors.Join(dialErr, err)
 			continue
@@ -255,6 +264,18 @@ func dialPublicNetwork(ctx context.Context, network, address string) (net.Conn, 
 		return nil, dialErr
 	}
 	return nil, fmt.Errorf("refusing non-public destination %q", address)
+}
+
+func dialAttemptContext(ctx context.Context, remainingAttempts int) (context.Context, context.CancelFunc) {
+	deadline, ok := ctx.Deadline()
+	if !ok || remainingAttempts <= 1 {
+		return context.WithCancel(ctx)
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, remaining/time.Duration(remainingAttempts))
 }
 
 var specialUsePrefixes = []netip.Prefix{

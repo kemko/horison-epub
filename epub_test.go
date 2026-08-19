@@ -18,6 +18,7 @@ import (
 )
 
 func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
+	const secret = "do-not-log-this"
 	var sharedRequests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -37,7 +38,7 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 	issueURL := server.URL + "/issues/sample/"
 	issue := Issue{
 		Title:    "Тестовый выпуск",
-		URL:      issueURL,
+		URL:      issueURL + "?token=" + secret + "#" + secret,
 		CoverURL: server.URL + "/cover.png",
 		Sections: []Section{
 			{
@@ -107,6 +108,12 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 			t.Errorf("package.opf does not contain %q", want)
 		}
 	}
+	if strings.Contains(packageXML, secret) {
+		t.Errorf("package.opf exposes issue URL secret")
+	}
+	if ncx := string(entries["EPUB/toc.ncx"].body); strings.Contains(ncx, secret) {
+		t.Errorf("toc.ncx exposes issue URL secret")
+	}
 	nav := string(entries["EPUB/nav.xhtml"].body)
 	for _, want := range []string{"Содержание", "Первый блок", "Второй блок", "Первая статья", "Вторая статья"} {
 		if !strings.Contains(nav, want) {
@@ -130,6 +137,36 @@ func TestBuildEPUBCreatesAutonomousNestedBook(t *testing.T) {
 		if strings.Contains(article, unwanted) {
 			t.Errorf("article XHTML contains removed value %q", unwanted)
 		}
+	}
+}
+
+func TestBuildEPUBRedactsImageURLInErrors(t *testing.T) {
+	const secret = "do-not-log-this"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/cover.png" {
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(pngBytes())
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	issueURL := server.URL + "/issues/sample/"
+	articleURL := issueURL + "article/"
+	issue := Issue{
+		Title:    "Выпуск",
+		URL:      issueURL,
+		CoverURL: server.URL + "/cover.png",
+		Sections: []Section{{Title: "Раздел", Articles: []Article{{Title: "Статья", URL: articleURL}}}},
+	}
+	article := parseTestArticle(t, "Статья", articleURL, fmt.Sprintf(`<p>Текст.</p><img src="%s/missing.png?token=%s">`, server.URL, secret))
+	err := BuildEPUB(issue, []Article{article}, newTestFetcher(t), io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "/missing.png") {
+		t.Fatalf("image error = %v", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("image error exposes query secret: %v", err)
 	}
 }
 
