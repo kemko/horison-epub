@@ -1,8 +1,8 @@
 version: 2
-project_name: horizon-epub
+project_name: horisont-epub
 
 builds:
-  - binary: horizon-epub
+  - binary: horisont-epub
     env:
       - CGO_ENABLED=0
     goos:

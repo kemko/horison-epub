@@ -5,7 +5,7 @@ GOLANGCI_LINT ?= golangci-lint
 GOVULNCHECK ?= govulncheck
 GORELEASER ?= goreleaser
 
-BINARY ?= bin/horizon-epub
+BINARY ?= bin/horisont-epub
 COVERAGE_MIN ?= 80
 VULN_GO_VERSION ?= $(shell $(GO) list -m -f '{{.GoVersion}}')
 VULN_GO_VERSION_NORMALIZED := $(if $(filter go%,$(VULN_GO_VERSION)),$(VULN_GO_VERSION),go$(VULN_GO_VERSION))
@@ -29,7 +29,7 @@ lint:
 
 coverage:
 	@set -eu; \
-	coverage_file="$$(mktemp "$${TMPDIR:-/tmp}/horizon-epub-coverage.XXXXXX")"; \
+	coverage_file="$$(mktemp "$${TMPDIR:-/tmp}/horisont-epub-coverage.XXXXXX")"; \
 	trap 'rm -f "$$coverage_file"' EXIT INT TERM; \
 	$(GO) test -coverprofile="$$coverage_file" ./...; \
 	$(GO) tool cover -func="$$coverage_file"; \
@@ -45,12 +45,12 @@ release-check:
 		$(GORELEASER) check; \
 		$(GORELEASER) release --snapshot --clean --skip=publish; \
 	else \
-		GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.url GIT_CONFIG_VALUE_0=https://github.com/local/horizon-epub.git $(GORELEASER) check; \
-		GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.url GIT_CONFIG_VALUE_0=https://github.com/local/horizon-epub.git $(GORELEASER) release --snapshot --clean --skip=publish; \
+		GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.url GIT_CONFIG_VALUE_0=https://github.com/local/horisont-epub.git $(GORELEASER) check; \
+		GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.url GIT_CONFIG_VALUE_0=https://github.com/local/horisont-epub.git $(GORELEASER) release --snapshot --clean --skip=publish; \
 	fi; \
-		tar_count="$$(find dist -type f -name 'horizon-epub_*.tar.gz' -print | wc -l | tr -d ' ')"; \
-		zip_count="$$(find dist -type f -name 'horizon-epub_*.zip' -print | wc -l | tr -d ' ')"; \
-		checksum_count="$$(find dist -type f -name 'horizon-epub_*_checksums.txt' -print | wc -l | tr -d ' ')"; \
+		tar_count="$$(find dist -type f -name 'horisont-epub_*.tar.gz' -print | wc -l | tr -d ' ')"; \
+		zip_count="$$(find dist -type f -name 'horisont-epub_*.zip' -print | wc -l | tr -d ' ')"; \
+		checksum_count="$$(find dist -type f -name 'horisont-epub_*_checksums.txt' -print | wc -l | tr -d ' ')"; \
 		test "$$tar_count" -eq 4; \
 		test "$$zip_count" -eq 2; \
 		test "$$checksum_count" -eq 1
