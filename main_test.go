@@ -14,11 +14,11 @@ import (
 )
 
 func TestOutputPathFor(t *testing.T) {
-	got, err := outputPathFor("https://example.test/issues/horisont-n-82/?page=1", "")
+	got, err := outputPathFor("https://example.test/issues/horizon-n-82/?page=1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "horisont-n-82.epub" {
+	if got != "horizon-n-82.epub" {
 		t.Fatalf("default output = %q", got)
 	}
 
@@ -268,7 +268,7 @@ func TestRunBuildsEPUBAndPrintsOutput(t *testing.T) {
 		}
 	}()
 	for _, file := range archive.File {
-		if strings.Contains(file.Name, ".horisont-epub-") {
+		if strings.Contains(file.Name, ".horizon-epub-") {
 			t.Fatalf("temporary filename leaked into EPUB: %q", file.Name)
 		}
 	}

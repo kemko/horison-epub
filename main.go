@@ -1,4 +1,4 @@
-// Package main provides the horisont-epub command.
+// Package main provides the horizon-epub command.
 package main
 
 import (
@@ -29,13 +29,13 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 	logger := log.New(stderr, "", 0)
-	flags := flag.NewFlagSet("horisont-epub", flag.ContinueOnError)
+	flags := flag.NewFlagSet("horizon-epub", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	output := flags.String("o", "", "output EPUB path")
 	allowPrivateNetwork := flags.Bool("allow-private-network", false, "allow downloads from private network addresses")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			if _, err := fmt.Fprintln(stderr, "usage: horisont-epub [-allow-private-network] [-o output.epub] <issue-url>"); err != nil {
+			if _, err := fmt.Fprintln(stderr, "usage: horizon-epub [-allow-private-network] [-o output.epub] <issue-url>"); err != nil {
 				return fmt.Errorf("write help: %w", err)
 			}
 			return nil
@@ -43,7 +43,7 @@ func run(args []string, stdout, stderr io.Writer) (resultErr error) {
 		return fmt.Errorf("invalid arguments: %w", err)
 	}
 	if flags.NArg() != 1 {
-		return errors.New("usage: horisont-epub [-allow-private-network] [-o output.epub] <issue-url>")
+		return errors.New("usage: horizon-epub [-allow-private-network] [-o output.epub] <issue-url>")
 	}
 
 	issueURL := flags.Arg(0)
@@ -241,7 +241,7 @@ func createTemporaryOutput(root *os.Root) (*os.File, string, error) {
 		if _, err := rand.Read(suffix[:]); err != nil {
 			return nil, "", fmt.Errorf("generate temporary output name: %w", err)
 		}
-		name := ".horisont-epub-" + hex.EncodeToString(suffix[:]) + ".tmp"
+		name := ".horizon-epub-" + hex.EncodeToString(suffix[:]) + ".tmp"
 		file, err := root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 		if err == nil {
 			return file, name, nil
